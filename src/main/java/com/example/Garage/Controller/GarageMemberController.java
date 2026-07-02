@@ -1,9 +1,11 @@
 package com.example.Garage.Controller;
 
 import com.example.Garage.Dto.GarageMemberRequest;
+import com.example.Garage.Dto.UserSummaryResponse;
 import com.example.Garage.Model.Garage;
 import com.example.Garage.Model.GarageMember;
 import com.example.Garage.Model.Role;
+import com.example.Garage.Model.User;
 import com.example.Garage.Repository.GarageMemberRepo;
 import com.example.Garage.Repository.GarageRepo;
 import com.example.Garage.Repository.UserRepository;
@@ -17,6 +19,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/garage-members")
@@ -54,6 +58,21 @@ public class GarageMemberController {
         member.setLongitude(request.getLongitude());
 
         return ResponseEntity.ok(garageMemberRepo.save(member));
+    }
+
+    @GetMapping("/available-technicians")
+    @PreAuthorize("hasAuthority('ROLE_GARAGE_OWNER')")
+    public ResponseEntity<List<UserSummaryResponse>> availableTechnicians() {
+        Set<Long> alreadyAssigned = garageMemberRepo.findAll().stream()
+                .map(GarageMember::getUserId)
+                .collect(Collectors.toSet());
+
+        List<UserSummaryResponse> result = userRepository.findByRoles_Name("ROLE_GARAGE_MEMBER").stream()
+                .filter(u -> !alreadyAssigned.contains(u.getId()))
+                .map(u -> new UserSummaryResponse(u.getId(), u.getUsername()))
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/garage/{garageId}")

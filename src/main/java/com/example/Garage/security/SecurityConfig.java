@@ -25,7 +25,8 @@ public class SecurityConfig {
         http
                 .csrf().disable()
                 .authorizeHttpRequests()
-                .requestMatchers("/auth/**", "/","/h2-console/**").permitAll()
+                .requestMatchers("/auth/**", "/", "/h2-console/**",
+                        "/index.html", "/favicon.ico", "/css/**", "/js/**", "/assets/**").permitAll()
                 .anyRequest().authenticated()
                 .and()
                 .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS);
