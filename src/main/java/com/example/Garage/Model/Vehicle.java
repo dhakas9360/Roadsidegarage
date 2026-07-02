@@ -20,6 +20,9 @@ public class Vehicle {
     private VehicleType vehicleType;
 
     private String model;
+
+    @Column(name = "manufacture_year") // "year" is a reserved word in H2
     private Integer year;
+
     private String licensePlate;
 }
