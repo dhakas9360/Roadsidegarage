@@ -17,7 +17,7 @@ public class LeaderboardController {
 
     private final LeaderboardService leaderboardService;
 
-    /** Monthly "employee of the month" leaderboard for a garage's technicians. Defaults to the current month. */
+    /** Monthly "employee of the month" leaderboard for a garage's technicians. Defaults to the current month. nice  */
     @GetMapping
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<LeaderboardEntryResponse>> monthly(
