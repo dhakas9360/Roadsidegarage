@@ -23,6 +23,7 @@ public class BookingService {
     private final GarageServicePriceRepo garageServicePriceRepo;
     private final AssignmentService assignmentService;
     private final GarageMemberRepo garageMemberRepo;
+    private final NotificationService notificationService;
 
     public Booking placeBooking(Long garageId, Long faultTypeId, Long vehicleId, LocalDate date, Long currentUserId,
                                  String serviceAddress, Double serviceLatitude, Double serviceLongitude) {
@@ -66,15 +67,18 @@ public class BookingService {
 
         GarageMember assigned = assignmentService.assignTechnician(saved);
         if (assigned != null) {
-            saved.setAssignedMember(assigned);
-            saved.setStatus(BookingStatus.ASSIGNED);
-            assigned.setActiveJobs((assigned.getActiveJobs() == null ? 0 : assigned.getActiveJobs()) + 1);
-            garageMemberRepo.save(assigned);
+            saved = assignToBooking(saved, assigned);
         } else {
             saved.setStatus(BookingStatus.UNASSIGNED);
+            saved = bookingRepo.save(saved);
+            notificationService.notify(currentUserId,
+                    "Your booking at " + garage.getName() + " is pending — we're finding you a technician.", saved.getId());
+            notificationService.notify(garage.getOwnerUserId(),
+                    "New booking needs a technician: " + faultType.getName().replace("_", " ") + " at " + garage.getName() + ".",
+                    saved.getId());
         }
 
-        return bookingRepo.save(saved);
+        return saved;
     }
 
     public Booking cancelBooking(Long bookingId, Long currentUserId) {
@@ -100,7 +104,16 @@ public class BookingService {
         }
 
         booking.setStatus(BookingStatus.CANCELLED);
-        return bookingRepo.save(booking);
+        Booking saved = bookingRepo.save(booking);
+
+        if (isGarageOwner) {
+            notificationService.notify(saved.getUserId(),
+                    "Your booking at " + saved.getGarage().getName() + " was cancelled by the garage.", saved.getId());
+        } else if (member != null) {
+            notificationService.notify(member.getUserId(), "A job assigned to you was cancelled by the customer.", saved.getId());
+        }
+
+        return saved;
     }
 
     /** Retries auto-assignment (by rating) for a booking that was left UNASSIGNED because every technician was busy. */
@@ -144,6 +157,16 @@ public class BookingService {
         booking.setStatus(BookingStatus.ASSIGNED);
         technician.setActiveJobs((technician.getActiveJobs() == null ? 0 : technician.getActiveJobs()) + 1);
         garageMemberRepo.save(technician);
-        return bookingRepo.save(booking);
+        Booking saved = bookingRepo.save(booking);
+
+        String faultLabel = saved.getFaultType().getName().replace("_", " ");
+        notificationService.notify(saved.getUserId(),
+                "Your " + faultLabel + " booking at " + saved.getGarage().getName() + " has been assigned to a technician.",
+                saved.getId());
+        notificationService.notify(technician.getUserId(),
+                "New job: " + faultLabel + (saved.getServiceAddress() != null ? " at " + saved.getServiceAddress() : ""),
+                saved.getId());
+
+        return saved;
     }
 }

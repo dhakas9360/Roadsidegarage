@@ -54,6 +54,16 @@ html, body {
 .brand-mark { background: var(--accent); color: var(--ink); border-radius: 8px; padding: 2px 7px; font-size: 16px; }
 .topbar-sub { color: #b7b9c2; font-size: 13px; margin-top: 4px; }
 .topbar .icon-btn { background: rgba(255,255,255,0.1); border: none; color: #fff; width: 36px; height: 36px; border-radius: 50%; font-size: 16px; cursor: pointer; }
+.notif-badge {
+  position: absolute; top: -2px; right: -2px;
+  background: var(--red, #e5484d); color: #fff;
+  font-size: 10px; font-weight: 700; line-height: 1;
+  min-width: 16px; height: 16px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 3px;
+}
+.notif-item { border-left: 3px solid transparent; }
+.notif-item.unread { border-left-color: var(--accent); background: var(--surface-alt, #f6f6fb); }
 
 /* ---- Content ---- */
 .content { flex: 1; padding: 16px 16px 90px; }

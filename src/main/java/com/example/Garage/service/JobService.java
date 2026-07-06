@@ -22,6 +22,7 @@ public class JobService {
     private final BookingRepo bookingRepo;
     private final GarageMemberRepo garageMemberRepo;
     private final GarageRepo garageRepo;
+    private final NotificationService notificationService;
 
     public GarageMember getTechnicianForUser(Long userId) {
         return garageMemberRepo.findByUserId(userId)
@@ -46,7 +47,11 @@ public class JobService {
         }
 
         booking.setStatus(BookingStatus.IN_PROGRESS);
-        return bookingRepo.save(booking);
+        Booking saved = bookingRepo.save(booking);
+        notificationService.notify(saved.getUserId(),
+                "Your technician has started working on your " + saved.getFaultType().getName().replace("_", " ") + ".",
+                saved.getId());
+        return saved;
     }
 
     public Booking completeJob(Long bookingId, Long technicianUserId) {
@@ -63,7 +68,11 @@ public class JobService {
         technician.setActiveJobs(Math.max(0, (technician.getActiveJobs() == null ? 0 : technician.getActiveJobs()) - 1));
         garageMemberRepo.save(technician);
 
-        return bookingRepo.save(booking);
+        Booking saved = bookingRepo.save(booking);
+        notificationService.notify(saved.getUserId(),
+                "Your " + saved.getFaultType().getName().replace("_", " ") + " job is complete! Please rate your technician.",
+                saved.getId());
+        return saved;
     }
 
     public Booking rateBooking(Long bookingId, Long currentUserId, int rating, String comment) {
@@ -91,6 +100,8 @@ public class JobService {
             Garage garage = booking.getGarage();
             applyRunningAverage(garage, rating);
             garageRepo.save(garage);
+
+            notificationService.notify(technician.getUserId(), "You received a " + rating + "★ rating from a customer.", saved.getId());
         }
 
         return saved;

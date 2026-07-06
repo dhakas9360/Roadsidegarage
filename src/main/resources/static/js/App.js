@@ -5,6 +5,7 @@ import { useRoute, navigate } from "./router.js";
 
 import Login from "./pages/Login.js";
 import Register from "./pages/Register.js";
+import Notifications from "./pages/Notifications.js";
 
 import Home from "./pages/customer/Home.js";
 import GarageResults from "./pages/customer/GarageResults.js";
@@ -21,6 +22,8 @@ import MyJobs from "./pages/technician/MyJobs.js";
 const PUBLIC_ROUTES = { "/login": Login, "/register": Register };
 
 const PROTECTED_ROUTES = {
+  "/notifications": { role: null, Component: Notifications },
+
   "/customer/home": { role: "ROLE_USER", Component: Home },
   "/customer/results": { role: "ROLE_USER", Component: GarageResults },
   "/customer/vehicles": { role: "ROLE_USER", Component: Vehicles },
@@ -47,7 +50,7 @@ export default function App() {
       navigate(homePathForRole(role));
       return;
     }
-    if (session && PROTECTED_ROUTES[path] && PROTECTED_ROUTES[path].role !== role) {
+    if (session && PROTECTED_ROUTES[path] && PROTECTED_ROUTES[path].role && PROTECTED_ROUTES[path].role !== role) {
       navigate(homePathForRole(role));
     }
   }, [session, path, role]);
@@ -58,7 +61,7 @@ export default function App() {
   }
 
   const route = PROTECTED_ROUTES[path];
-  if (!route || route.role !== role) return null;
+  if (!route || (route.role && route.role !== role)) return null;
 
   return html`<${route.Component} />`;
 }
