@@ -51,10 +51,13 @@ export default function BookingsTab({ garageId }) {
             </div>
             <${StatusBadge} status=${b.status} />
           </div>
+          ${b.serviceAddress && html`<p className="card-sub" style=${{ marginTop: 6 }}>📍 ${b.serviceAddress}</p>`}
+          <p className="card-sub" style=${{ marginTop: 2 }}>
+            👤 ${b.customerName || "unknown"}${b.customerPhone ? ` · ${b.customerPhone}` : ""}
+            ${b.technicianName && html` &nbsp;·&nbsp; 🔧 ${b.technicianName}`}
+          </p>
           <div className="card-row" style=${{ marginTop: 10 }}>
-            <div className="muted">
-              ₹${b.quotedPrice} ${b.assignedMember ? `· tech #${b.assignedMember.userId}` : ""}
-            </div>
+            <div className="muted">₹${b.quotedPrice}</div>
             ${CANCELLABLE.has(b.status) &&
             html`<${Button} size="sm" variant="danger" loading=${busyId === b.id} onClick=${() => cancel(b.id)}>Cancel<//>`}
           </div>

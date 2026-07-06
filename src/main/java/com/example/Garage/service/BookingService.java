@@ -23,7 +23,8 @@ public class BookingService {
     private final AssignmentService assignmentService;
     private final GarageMemberRepo garageMemberRepo;
 
-    public Booking placeBooking(Long garageId, Long faultTypeId, Long vehicleId, LocalDate date, Long currentUserId) {
+    public Booking placeBooking(Long garageId, Long faultTypeId, Long vehicleId, LocalDate date, Long currentUserId,
+                                 String serviceAddress, Double serviceLatitude, Double serviceLongitude) {
         Garage garage = garageRepo.findById(garageId)
                 .orElseThrow(() -> new ResourceNotFoundException("Garage not found"));
 
@@ -54,6 +55,9 @@ public class BookingService {
         booking.setAppointmentDate(date);
         booking.setUserId(currentUserId);
         booking.setQuotedPrice(price);
+        booking.setServiceAddress(serviceAddress);
+        booking.setServiceLatitude(serviceLatitude);
+        booking.setServiceLongitude(serviceLongitude);
         booking.setCreatedAt(LocalDateTime.now());
         booking.setStatus(BookingStatus.PENDING);
 

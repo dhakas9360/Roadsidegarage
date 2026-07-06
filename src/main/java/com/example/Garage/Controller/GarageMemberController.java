@@ -78,7 +78,9 @@ public class GarageMemberController {
     @GetMapping("/garage/{garageId}")
     @PreAuthorize("hasAuthority('ROLE_GARAGE_OWNER') or hasAuthority('ROLE_GARAGE_MEMBER')")
     public ResponseEntity<List<GarageMember>> listByGarage(@PathVariable Long garageId) {
-        return ResponseEntity.ok(garageMemberRepo.findByGarage_Id(garageId));
+        List<GarageMember> members = garageMemberRepo.findByGarage_Id(garageId);
+        members.forEach(this::attachContactInfo);
+        return ResponseEntity.ok(members);
     }
 
     @GetMapping("/me")
@@ -86,7 +88,15 @@ public class GarageMemberController {
     public ResponseEntity<?> myProfile() {
         GarageMember member = garageMemberRepo.findByUserId(currentUserService.getCurrentUserId())
                 .orElseThrow(() -> new ResourceNotFoundException("No technician profile found for this account"));
+        attachContactInfo(member);
         return ResponseEntity.ok(member);
+    }
+
+    private void attachContactInfo(GarageMember member) {
+        userRepository.findById(member.getUserId()).ifPresent(u -> {
+            member.setUsername(u.getUsername());
+            member.setPhone(u.getPhone());
+        });
     }
 
     @PatchMapping("/me/availability")

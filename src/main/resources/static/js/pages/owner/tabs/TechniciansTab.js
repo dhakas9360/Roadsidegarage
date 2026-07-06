@@ -71,8 +71,10 @@ export default function TechniciansTab({ garageId }) {
           (m) => html`
             <div key=${m.id} className="card card-row">
               <div>
-                <p className="card-title">Technician #${m.userId}</p>
-                <p className="card-sub">${m.activeJobs || 0} active job(s) · ${m.available ? "Available" : "Unavailable"}</p>
+                <p className="card-title">${m.username || `Technician #${m.userId}`}</p>
+                <p className="card-sub">
+                  ${m.phone ? `${m.phone} · ` : ""}${m.activeJobs || 0} active job(s) · ${m.available ? "Available" : "Unavailable"}
+                </p>
               </div>
               <div style=${{ textAlign: "right" }}>
                 <${RatingStars} value=${m.rating} />

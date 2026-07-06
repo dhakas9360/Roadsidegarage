@@ -19,6 +19,7 @@ export default function GarageResults() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [date, setDate] = useState(tomorrow());
+  const [address, setAddress] = useState("");
   const [bookingId, setBookingId] = useState(null);
 
   useEffect(() => {
@@ -37,6 +38,10 @@ export default function GarageResults() {
   }, []);
 
   const book = async (garageId) => {
+    if (!address.trim()) {
+      setError("Enter the address where the technician should come.");
+      return;
+    }
     setError(null);
     setBookingId(garageId);
     try {
@@ -45,6 +50,9 @@ export default function GarageResults() {
         faultTypeId: Number(params.get("faultTypeId")),
         vehicleId: Number(params.get("vehicleId")),
         appointmentDate: date,
+        serviceAddress: address.trim(),
+        serviceLatitude: params.get("lat") ? Number(params.get("lat")) : null,
+        serviceLongitude: params.get("lng") ? Number(params.get("lng")) : null,
       });
       navigate("/customer/bookings");
     } catch (err) {
@@ -58,9 +66,18 @@ export default function GarageResults() {
     <${Layout} title="Nearby garages" back="/customer/home">
       ${error && html`<div className="error-banner">${error}</div>`}
       <div className="card">
-        <div className="field" style=${{ marginBottom: 0 }}>
+        <div className="field">
           <label>Appointment date</label>
           <input type="date" min=${tomorrow()} value=${date} onChange=${(e) => setDate(e.target.value)} />
+        </div>
+        <div className="field" style=${{ marginBottom: 0 }}>
+          <label>Address for the technician to come to</label>
+          <input
+            required
+            placeholder="e.g. 12 MG Road, near City Mall"
+            value=${address}
+            onChange=${(e) => setAddress(e.target.value)}
+          />
         </div>
       </div>
 

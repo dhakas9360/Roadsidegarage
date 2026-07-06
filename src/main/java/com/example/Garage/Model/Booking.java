@@ -39,10 +39,25 @@ public class Booking {
     // price snapshot at the time of booking, looked up from GarageServicePrice
     private Double quotedPrice;
 
+    // where the technician needs to go to do the fix
+    private String serviceAddress;
+    private Double serviceLatitude;
+    private Double serviceLongitude;
+
     private Integer rating; // 1-5, set once the user rates a completed job
     private String ratingComment;
 
     private LocalDateTime createdAt;
     private LocalDateTime completedAt;
     private LocalDateTime ratedAt;
+
+    // populated on read by BookingContactEnricher; not persisted
+    @Transient
+    private String customerName;
+    @Transient
+    private String customerPhone;
+    @Transient
+    private String technicianName;
+    @Transient
+    private String technicianPhone;
 }

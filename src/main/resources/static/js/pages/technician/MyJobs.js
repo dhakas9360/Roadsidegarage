@@ -86,6 +86,15 @@ export default function MyJobs() {
               </div>
               <${StatusBadge} status=${j.status} />
             </div>
+            ${j.serviceAddress &&
+            html`<p className="card-sub" style=${{ marginTop: 6 }}>📍 ${j.serviceAddress}</p>`}
+            ${(j.status === "ASSIGNED" || j.status === "IN_PROGRESS") && j.customerName &&
+            html`
+              <p className="card-sub" style=${{ marginTop: 2 }}>
+                👤 ${j.customerName}
+                ${j.customerPhone && html` · <a href=${`tel:${j.customerPhone}`}>${j.customerPhone}</a>`}
+              </p>
+            `}
             <div className="card-row" style=${{ marginTop: 10 }}>
               <div className="muted">₹${j.quotedPrice}</div>
               ${j.status === "ASSIGNED" &&

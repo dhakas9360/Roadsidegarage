@@ -55,10 +55,16 @@ export default function MyBookings() {
               </div>
               <${StatusBadge} status=${b.status} />
             </div>
+            ${b.serviceAddress && html`<p className="card-sub" style=${{ marginTop: 6 }}>📍 ${b.serviceAddress}</p>`}
+            ${b.technicianName &&
+            html`
+              <p className="card-sub" style=${{ marginTop: 2 }}>
+                🔧 ${b.technicianName}
+                ${b.technicianPhone && html` · <a href=${`tel:${b.technicianPhone}`}>${b.technicianPhone}</a>`}
+              </p>
+            `}
             <div className="card-row" style=${{ marginTop: 10 }}>
-              <div className="muted">
-                ${b.assignedMember ? "Technician assigned · " : ""}₹${b.quotedPrice}
-              </div>
+              <div className="muted">₹${b.quotedPrice}</div>
               ${b.status === "RATED" && html`<${RatingStars} value=${b.rating} />`}
               ${b.status === "COMPLETED" &&
               html`<${Button} size="sm" onClick=${() => navigate(`/customer/rate?id=${b.id}`)}>Rate job<//>`}

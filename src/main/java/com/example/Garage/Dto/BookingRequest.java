@@ -1,5 +1,6 @@
 package com.example.Garage.Dto;
 
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
@@ -18,4 +19,11 @@ public class BookingRequest {
 
     @NotNull
     private LocalDate appointmentDate;
+
+    // where the technician needs to go to do the fix
+    @NotBlank
+    private String serviceAddress;
+
+    private Double serviceLatitude;
+    private Double serviceLongitude;
 }

@@ -11,7 +11,7 @@ const ROLES = [
 ];
 
 export default function Register() {
-  const [form, setForm] = useState({ username: "", email: "", password: "", role: "ROLE_USER" });
+  const [form, setForm] = useState({ username: "", email: "", phone: "", password: "", role: "ROLE_USER" });
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -26,6 +26,7 @@ export default function Register() {
       await api.post("/auth/register", {
         username: form.username,
         email: form.email,
+        phone: form.phone,
         password: form.password,
         roles: [form.role],
       });
@@ -79,6 +80,10 @@ export default function Register() {
                   <div className="field">
                     <label>Email</label>
                     <input required type="email" value=${form.email} onChange=${set("email")} />
+                  </div>
+                  <div className="field">
+                    <label>Phone</label>
+                    <input required type="tel" placeholder="e.g. 9876543210" value=${form.phone} onChange=${set("phone")} />
                   </div>
                   <div className="field">
                     <label>Password</label>

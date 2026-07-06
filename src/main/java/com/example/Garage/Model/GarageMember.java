@@ -32,4 +32,10 @@ public class GarageMember {
     // running average rating from completed & rated jobs, used to pick assignees
     private Double rating = 0.0;
     private Integer ratingCount = 0;
+
+    // populated on read from the linked User; not persisted
+    @Transient
+    private String username;
+    @Transient
+    private String phone;
 }

@@ -8,6 +8,7 @@ import com.example.Garage.Repository.BookingRepo;
 import com.example.Garage.Repository.GarageRepo;
 import com.example.Garage.exception.ForbiddenActionException;
 import com.example.Garage.exception.ResourceNotFoundException;
+import com.example.Garage.service.BookingContactEnricher;
 import com.example.Garage.service.BookingService;
 import com.example.Garage.service.CurrentUserService;
 import com.example.Garage.service.JobService;
@@ -29,20 +30,22 @@ public class BookingController {
     private final BookingRepo bookingRepo;
     private final GarageRepo garageRepo;
     private final CurrentUserService currentUserService;
+    private final BookingContactEnricher contactEnricher;
 
     @PostMapping("/place")
     @PreAuthorize("hasAuthority('ROLE_USER')")
     public ResponseEntity<?> placeBooking(@Valid @RequestBody BookingRequest request) {
         Booking booking = bookingService.placeBooking(
                 request.getGarageId(), request.getFaultTypeId(), request.getVehicleId(),
-                request.getAppointmentDate(), currentUserService.getCurrentUserId());
-        return ResponseEntity.ok(booking);
+                request.getAppointmentDate(), currentUserService.getCurrentUserId(),
+                request.getServiceAddress(), request.getServiceLatitude(), request.getServiceLongitude());
+        return ResponseEntity.ok(contactEnricher.enrich(booking));
     }
 
     @GetMapping("/my")
     @PreAuthorize("hasAuthority('ROLE_USER')")
     public ResponseEntity<List<Booking>> myBookings() {
-        return ResponseEntity.ok(bookingRepo.findByUserId(currentUserService.getCurrentUserId()));
+        return ResponseEntity.ok(contactEnricher.enrich(bookingRepo.findByUserId(currentUserService.getCurrentUserId())));
     }
 
     @GetMapping("/garage/{garageId}")
@@ -52,19 +55,19 @@ public class BookingController {
         if (!garage.getOwnerUserId().equals(currentUserService.getCurrentUserId())) {
             throw new ForbiddenActionException("You do not own this garage");
         }
-        return ResponseEntity.ok(bookingRepo.findByGarage(garage));
+        return ResponseEntity.ok(contactEnricher.enrich(bookingRepo.findByGarage(garage)));
     }
 
     @PatchMapping("/{id}/cancel")
     @PreAuthorize("hasAuthority('ROLE_USER') or hasAuthority('ROLE_GARAGE_OWNER')")
     public ResponseEntity<?> cancelBooking(@PathVariable Long id) {
-        return ResponseEntity.ok(bookingService.cancelBooking(id, currentUserService.getCurrentUserId()));
+        return ResponseEntity.ok(contactEnricher.enrich(bookingService.cancelBooking(id, currentUserService.getCurrentUserId())));
     }
 
     @PostMapping("/{id}/rate")
     @PreAuthorize("hasAuthority('ROLE_USER')")
     public ResponseEntity<?> rateBooking(@PathVariable Long id, @Valid @RequestBody RateBookingRequest request) {
         Booking booking = jobService.rateBooking(id, currentUserService.getCurrentUserId(), request.getRating(), request.getComment());
-        return ResponseEntity.ok(booking);
+        return ResponseEntity.ok(contactEnricher.enrich(booking));
     }
 }
