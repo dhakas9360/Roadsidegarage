@@ -4,6 +4,7 @@ import com.example.Garage.Model.*;
 import com.example.Garage.Repository.*;
 import com.example.Garage.exception.ForbiddenActionException;
 import com.example.Garage.exception.GarageFullException;
+import com.example.Garage.exception.InvalidStateTransitionException;
 import com.example.Garage.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -89,8 +90,7 @@ public class BookingService {
 
         if (booking.getStatus() == BookingStatus.COMPLETED || booking.getStatus() == BookingStatus.RATED
                 || booking.getStatus() == BookingStatus.CANCELLED) {
-            throw new com.example.Garage.exception.InvalidStateTransitionException(
-                    "Cannot cancel a booking that is " + booking.getStatus());
+            throw new InvalidStateTransitionException("Cannot cancel a booking that is " + booking.getStatus());
         }
 
         GarageMember member = booking.getAssignedMember();
@@ -100,6 +100,50 @@ public class BookingService {
         }
 
         booking.setStatus(BookingStatus.CANCELLED);
+        return bookingRepo.save(booking);
+    }
+
+    /** Retries auto-assignment (by rating) for a booking that was left UNASSIGNED because every technician was busy. */
+    public Booking reassign(Long bookingId, Long currentOwnerId) {
+        Booking booking = loadOwnedUnassignedBooking(bookingId, currentOwnerId);
+
+        GarageMember assigned = assignmentService.assignTechnician(booking);
+        if (assigned == null) {
+            return booking; // still nobody available
+        }
+        return assignToBooking(booking, assigned);
+    }
+
+    /** Lets the owner pick a specific technician from their own garage for a stuck booking. */
+    public Booking assignTechnicianManually(Long bookingId, Long technicianId, Long currentOwnerId) {
+        Booking booking = loadOwnedUnassignedBooking(bookingId, currentOwnerId);
+
+        GarageMember technician = garageMemberRepo.findById(technicianId)
+                .orElseThrow(() -> new ResourceNotFoundException("Technician not found"));
+        if (!technician.getGarage().getId().equals(booking.getGarage().getId())) {
+            throw new ForbiddenActionException("This technician does not belong to the booking's garage");
+        }
+
+        return assignToBooking(booking, technician);
+    }
+
+    private Booking loadOwnedUnassignedBooking(Long bookingId, Long currentOwnerId) {
+        Booking booking = bookingRepo.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found"));
+        if (booking.getGarage().getOwnerUserId() == null || !booking.getGarage().getOwnerUserId().equals(currentOwnerId)) {
+            throw new ForbiddenActionException("You do not own this garage");
+        }
+        if (booking.getStatus() != BookingStatus.UNASSIGNED) {
+            throw new InvalidStateTransitionException("Only an UNASSIGNED booking can be (re)assigned (current status: " + booking.getStatus() + ")");
+        }
+        return booking;
+    }
+
+    private Booking assignToBooking(Booking booking, GarageMember technician) {
+        booking.setAssignedMember(technician);
+        booking.setStatus(BookingStatus.ASSIGNED);
+        technician.setActiveJobs((technician.getActiveJobs() == null ? 0 : technician.getActiveJobs()) + 1);
+        garageMemberRepo.save(technician);
         return bookingRepo.save(booking);
     }
 }

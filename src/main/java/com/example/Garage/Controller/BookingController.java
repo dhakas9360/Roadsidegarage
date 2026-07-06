@@ -64,6 +64,19 @@ public class BookingController {
         return ResponseEntity.ok(contactEnricher.enrich(bookingService.cancelBooking(id, currentUserService.getCurrentUserId())));
     }
 
+    @PatchMapping("/{id}/reassign")
+    @PreAuthorize("hasAuthority('ROLE_GARAGE_OWNER')")
+    public ResponseEntity<?> reassign(@PathVariable Long id) {
+        return ResponseEntity.ok(contactEnricher.enrich(bookingService.reassign(id, currentUserService.getCurrentUserId())));
+    }
+
+    @PatchMapping("/{id}/assign")
+    @PreAuthorize("hasAuthority('ROLE_GARAGE_OWNER')")
+    public ResponseEntity<?> assignTechnician(@PathVariable Long id, @RequestParam Long technicianId) {
+        Booking booking = bookingService.assignTechnicianManually(id, technicianId, currentUserService.getCurrentUserId());
+        return ResponseEntity.ok(contactEnricher.enrich(booking));
+    }
+
     @PostMapping("/{id}/rate")
     @PreAuthorize("hasAuthority('ROLE_USER')")
     public ResponseEntity<?> rateBooking(@PathVariable Long id, @Valid @RequestBody RateBookingRequest request) {
