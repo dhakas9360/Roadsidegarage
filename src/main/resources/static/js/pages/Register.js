@@ -46,6 +46,8 @@ export default function Register() {
           <div className="brand" style=${{ justifyContent: "center", fontSize: 26 }}>
             <span>RoadFix</span>
           </div>
+          <div className="tagline-hero">Join the fix squad. 🔧</div>
+          <div className="tagline-sub">One account, every roadside emergency handled.</div>
         </div>
         <div className="card">
           <div className="section-title">Create account</div>

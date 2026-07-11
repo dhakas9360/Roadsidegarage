@@ -36,7 +36,8 @@ export default function Login() {
           <div className="brand" style=${{ justifyContent: "center", fontSize: 26 }}>
             <span>RoadFix</span>
           </div>
-          <div style=${{ color: "#b7b9c2", marginTop: 6 }}>Roadside help, sorted fast.</div>
+          <div className="tagline-hero">Stuck? Not for long. 🚨</div>
+          <div className="tagline-sub">Flat tyres, dead batteries, bad days — sorted, fast.</div>
         </div>
         <div className="card">
           <div className="section-title">Welcome back</div>
