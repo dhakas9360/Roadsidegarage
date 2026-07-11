@@ -31,7 +31,7 @@ async function request(method, path, body) {
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  if (res.status === 401) {
+  if (res.status === 401 && !path.startsWith("/auth/")) {
     setSession(null);
     window.location.hash = "#/login";
     throw new ApiError("Session expired, please log in again", 401);
