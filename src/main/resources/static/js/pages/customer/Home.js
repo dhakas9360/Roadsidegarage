@@ -352,6 +352,10 @@ export default function Home() {
                   </div>
                 `
               )}
+              <div className="vehicle-chip vehicle-chip-add" onClick=${() => navigate("/customer/vehicles")}>
+                <span className="vehicle-emoji">➕</span>
+                <span>Add vehicle</span>
+              </div>
             </div>
           </div>
           <div className="field">

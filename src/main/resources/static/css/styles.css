@@ -308,6 +308,7 @@ html, body {
 .vehicle-chip .vehicle-emoji { font-size: 18px; }
 .vehicle-chip.active { border-color: var(--accent); background: #fff1ea; color: var(--accent-dark); }
 :root[data-theme="dark"] .vehicle-chip.active { background: rgba(255,106,57,0.15); }
+.vehicle-chip-add { border-style: dashed; color: var(--accent-dark); }
 
 /* ---- SOS shortcut ---- */
 .sos-btn {
