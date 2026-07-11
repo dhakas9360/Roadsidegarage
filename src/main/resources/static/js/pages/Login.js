@@ -29,24 +29,27 @@ export default function Login() {
   };
 
   return html`
-    <div className="center-screen" style=${{ background: "var(--ink)" }}>
+    <div className="auth-bg">
       <div className="auth-card">
         <div style=${{ textAlign: "center", marginBottom: 24, color: "#fff" }}>
-          <div className="brand" style=${{ justifyContent: "center", fontSize: 28 }}>
-            <span className="brand-mark">RF</span><span>RoadFix</span>
+          <div className="auth-logo">RF</div>
+          <div className="brand" style=${{ justifyContent: "center", fontSize: 26 }}>
+            <span>RoadFix</span>
           </div>
           <div style=${{ color: "#b7b9c2", marginTop: 6 }}>Roadside help, sorted fast.</div>
         </div>
         <div className="card">
-          <div className="section-title">Log in</div>
+          <div className="section-title">Welcome back</div>
           ${error && html`<div className="error-banner">${error}</div>`}
           <form onSubmit=${submit}>
-            <div className="field">
+            <div className="field field-icon">
               <label>Username</label>
+              <span className="field-icon-glyph">👤</span>
               <input required value=${form.username} onChange=${set("username")} placeholder="e.g. cust1" />
             </div>
-            <div className="field">
+            <div className="field field-icon">
               <label>Password</label>
+              <span className="field-icon-glyph">🔒</span>
               <input required type="password" value=${form.password} onChange=${set("password")} placeholder="••••••••" />
             </div>
             <${Button} type="submit" loading=${loading}>Log in<//>

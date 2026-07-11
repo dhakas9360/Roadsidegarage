@@ -39,11 +39,12 @@ export default function Register() {
   };
 
   return html`
-    <div className="center-screen" style=${{ background: "var(--ink)" }}>
+    <div className="auth-bg">
       <div className="auth-card">
         <div style=${{ textAlign: "center", marginBottom: 24, color: "#fff" }}>
-          <div className="brand" style=${{ justifyContent: "center", fontSize: 28 }}>
-            <span className="brand-mark">RF</span><span>RoadFix</span>
+          <div className="auth-logo">RF</div>
+          <div className="brand" style=${{ justifyContent: "center", fontSize: 26 }}>
+            <span>RoadFix</span>
           </div>
         </div>
         <div className="card">
@@ -73,20 +74,24 @@ export default function Register() {
                       )}
                     </div>
                   </div>
-                  <div className="field">
+                  <div className="field field-icon">
                     <label>Username</label>
+                    <span className="field-icon-glyph">👤</span>
                     <input required value=${form.username} onChange=${set("username")} />
                   </div>
-                  <div className="field">
+                  <div className="field field-icon">
                     <label>Email</label>
+                    <span className="field-icon-glyph">📧</span>
                     <input required type="email" value=${form.email} onChange=${set("email")} />
                   </div>
-                  <div className="field">
+                  <div className="field field-icon">
                     <label>Phone</label>
+                    <span className="field-icon-glyph">📱</span>
                     <input required type="tel" placeholder="e.g. 9876543210" value=${form.phone} onChange=${set("phone")} />
                   </div>
-                  <div className="field">
+                  <div className="field field-icon">
                     <label>Password</label>
+                    <span className="field-icon-glyph">🔒</span>
                     <input required type="password" minLength="6" value=${form.password} onChange=${set("password")} />
                   </div>
                   <${Button} type="submit" loading=${loading}>Create account<//>

@@ -5,8 +5,18 @@ import Button from "../../components/Button.js";
 import Spinner, { EmptyState } from "../../components/Spinner.js";
 import { api } from "../../api.js";
 import { navigate, Link } from "../../router.js";
+import { useAuth } from "../../auth.js";
+
+const FAULT_EMOJI = {
+  BATTERY_ISSUE: "🔋",
+  FLAT_TYRE: "🛞",
+  BRAKE_PROBLEM: "🛑",
+  ENGINE_OVERHEATING: "🌡️",
+  ELECTRICAL_FAULT: "⚡",
+};
 
 export default function Home() {
+  const { session } = useAuth();
   const [faultTypes, setFaultTypes] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -17,6 +27,12 @@ export default function Home() {
   const [suggesting, setSuggesting] = useState(false);
   const [suggestion, setSuggestion] = useState(null);
   const [aiError, setAiError] = useState(null);
+
+  const [locationMode, setLocationMode] = useState("gps");
+  const [addressQuery, setAddressQuery] = useState("");
+  const [geocoding, setGeocoding] = useState(false);
+  const [geocodeError, setGeocodeError] = useState(null);
+  const [resolvedAddress, setResolvedAddress] = useState(null);
 
   const [form, setForm] = useState({
     faultTypeId: "",
@@ -51,6 +67,33 @@ export default function Home() {
       () => setLocating(false),
       { timeout: 8000 }
     );
+  };
+
+  const findByAddress = async () => {
+    if (!addressQuery.trim()) {
+      setGeocodeError("Enter an address first.");
+      return;
+    }
+    setGeocoding(true);
+    setGeocodeError(null);
+    setResolvedAddress(null);
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(addressQuery.trim())}`
+      );
+      const results = await res.json();
+      if (!results.length) {
+        setGeocodeError("Couldn't find that address. Try being more specific.");
+        return;
+      }
+      const { lat, lon, display_name } = results[0];
+      setForm((f) => ({ ...f, lat: Number(lat).toFixed(5), lng: Number(lon).toFixed(5) }));
+      setResolvedAddress(display_name);
+    } catch (err) {
+      setGeocodeError("Couldn't look up that address right now.");
+    } finally {
+      setGeocoding(false);
+    }
   };
 
   const suggestFault = async () => {
@@ -102,7 +145,11 @@ export default function Home() {
   }
 
   return html`
-    <${Layout} title="RoadFix" subtitle="What's wrong with your ride?">
+    <${Layout} title="RoadFix">
+      <div className="home-hero">
+        <h2>Hey ${session?.username || "there"} 👋</h2>
+        <p>What's wrong with your ride today?</p>
+      </div>
       ${error && html`<div className="error-banner">${error}</div>`}
       <form onSubmit=${findGarages}>
         <div className="card">
@@ -129,9 +176,20 @@ export default function Home() {
           </div>
           <div className="field">
             <label>What's the fault?</label>
-            <select value=${form.faultTypeId} onChange=${(e) => setForm({ ...form, faultTypeId: e.target.value })}>
-              ${faultTypes.map((f) => html`<option key=${f.id} value=${f.id}>${f.name.replaceAll("_", " ")}<//>`)}
-            </select>
+            <div className="fault-grid">
+              ${faultTypes.map(
+                (f) => html`
+                  <div
+                    key=${f.id}
+                    className=${`fault-chip ${String(form.faultTypeId) === String(f.id) ? "active" : ""}`}
+                    onClick=${() => setForm({ ...form, faultTypeId: f.id })}
+                  >
+                    <span className="fault-emoji">${FAULT_EMOJI[f.name] || "🔧"}</span>
+                    <span>${f.name.replaceAll("_", " ")}</span>
+                  </div>
+                `
+              )}
+            </div>
           </div>
           <div className="field">
             <label>Which vehicle?</label>
@@ -142,16 +200,42 @@ export default function Home() {
             </select>
           </div>
           <div className="field">
-            <label>Your location</label>
-            <div className="pill-input">
-              <input placeholder="Latitude" required value=${form.lat} onChange=${(e) => setForm({ ...form, lat: e.target.value })} />
-              <input placeholder="Longitude" required value=${form.lng} onChange=${(e) => setForm({ ...form, lng: e.target.value })} />
+            <label>📍 Your location</label>
+            <div className="tabs" style=${{ marginBottom: 10 }}>
+              <div className=${`tab ${locationMode === "gps" ? "active" : ""}`} onClick=${() => setLocationMode("gps")}>
+                📍 My location
+              </div>
+              <div className=${`tab ${locationMode === "address" ? "active" : ""}`} onClick=${() => setLocationMode("address")}>
+                🏠 Enter address
+              </div>
             </div>
-            <div style=${{ marginTop: 8 }}>
-              <${Button} type="button" variant="outline" size="sm" loading=${locating} onClick=${locate}>
-                📍 Use current location
-              <//>
-            </div>
+            ${locationMode === "gps"
+              ? html`
+                  <div className="pill-input">
+                    <input placeholder="Latitude" required value=${form.lat} onChange=${(e) => setForm({ ...form, lat: e.target.value })} />
+                    <input placeholder="Longitude" required value=${form.lng} onChange=${(e) => setForm({ ...form, lng: e.target.value })} />
+                  </div>
+                  <div style=${{ marginTop: 8 }}>
+                    <${Button} type="button" variant="outline" size="sm" loading=${locating} onClick=${locate}>
+                      📍 Use current location
+                    <//>
+                  </div>
+                `
+              : html`
+                  <div className="pill-input">
+                    <input
+                      placeholder="e.g. 12 MG Road, New Delhi"
+                      value=${addressQuery}
+                      onChange=${(e) => setAddressQuery(e.target.value)}
+                    />
+                    <${Button} type="button" variant="outline" size="sm" loading=${geocoding} onClick=${findByAddress}>
+                      Find
+                    <//>
+                  </div>
+                  ${geocodeError && html`<p className="muted" style=${{ color: "var(--red)", marginTop: 6 }}>${geocodeError}</p>`}
+                  ${resolvedAddress &&
+                  html`<p className="muted" style=${{ marginTop: 6 }}>📍 ${resolvedAddress}</p>`}
+                `}
           </div>
           <div className="field">
             <label>Search radius: ${form.radiusKm} km</label>
@@ -165,7 +249,7 @@ export default function Home() {
             />
           </div>
         </div>
-        <${Button} type="submit">Find nearby garages<//>
+        <${Button} type="submit">🔍 Find nearby garages<//>
       </form>
     <//>
   `;
