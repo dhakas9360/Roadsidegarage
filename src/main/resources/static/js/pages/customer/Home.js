@@ -13,6 +13,11 @@ export default function Home() {
   const [error, setError] = useState(null);
   const [locating, setLocating] = useState(false);
 
+  const [describeText, setDescribeText] = useState("");
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestion, setSuggestion] = useState(null);
+  const [aiError, setAiError] = useState(null);
+
   const [form, setForm] = useState({
     faultTypeId: "",
     vehicleId: "",
@@ -46,6 +51,25 @@ export default function Home() {
       () => setLocating(false),
       { timeout: 8000 }
     );
+  };
+
+  const suggestFault = async () => {
+    if (!describeText.trim()) {
+      setAiError("Describe the issue first.");
+      return;
+    }
+    setSuggesting(true);
+    setAiError(null);
+    setSuggestion(null);
+    try {
+      const result = await api.post("/api/ai/classify-fault", { description: describeText.trim() });
+      setForm((f) => ({ ...f, faultTypeId: result.faultTypeId }));
+      setSuggestion(result);
+    } catch (err) {
+      setAiError(err.message);
+    } finally {
+      setSuggesting(false);
+    }
   };
 
   const findGarages = (e) => {
@@ -82,6 +106,27 @@ export default function Home() {
       ${error && html`<div className="error-banner">${error}</div>`}
       <form onSubmit=${findGarages}>
         <div className="card">
+          <div className="field">
+            <label>Describe your issue (optional)</label>
+            <textarea
+              rows="2"
+              placeholder="e.g. my car makes a grinding noise when I brake"
+              value=${describeText}
+              onChange=${(e) => setDescribeText(e.target.value)}
+            ></textarea>
+            <div style=${{ marginTop: 8 }}>
+              <${Button} type="button" variant="outline" size="sm" loading=${suggesting} onClick=${suggestFault}>
+                ✨ Suggest fault type
+              <//>
+            </div>
+            ${aiError && html`<p className="muted" style=${{ color: "var(--red)", marginTop: 6 }}>${aiError}</p>`}
+            ${suggestion &&
+            html`
+              <p className="muted" style=${{ marginTop: 6 }}>
+                Looks like <strong>${suggestion.faultTypeName.replaceAll("_", " ")}</strong> (${suggestion.urgency} urgency) — ${suggestion.explanation}
+              </p>
+            `}
+          </div>
           <div className="field">
             <label>What's the fault?</label>
             <select value=${form.faultTypeId} onChange=${(e) => setForm({ ...form, faultTypeId: e.target.value })}>
