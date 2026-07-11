@@ -15,13 +15,41 @@ const FAULT_EMOJI = {
   ELECTRICAL_FAULT: "⚡",
 };
 
+const VEHICLE_EMOJI = {
+  BIKE: "🏍️",
+  HATCHBACK: "🚗",
+  SEDAN: "🚘",
+  SUV: "🚙",
+  TRUCK: "🚚",
+};
+
+const ACTIVE_STATUSES = new Set(["PENDING", "UNASSIGNED", "ASSIGNED", "IN_PROGRESS"]);
+const FINISHED_STATUSES = new Set(["COMPLETED", "RATED"]);
+const LAST_LOCATION_KEY = "roadfix.lastLocation";
+
+function saveLastLocation(lat, lng) {
+  try {
+    localStorage.setItem(LAST_LOCATION_KEY, JSON.stringify({ lat, lng }));
+  } catch {}
+}
+
+function getLastLocation() {
+  try {
+    return JSON.parse(localStorage.getItem(LAST_LOCATION_KEY));
+  } catch {
+    return null;
+  }
+}
+
 export default function Home() {
   const { session } = useAuth();
   const [faultTypes, setFaultTypes] = useState([]);
   const [vehicles, setVehicles] = useState([]);
+  const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [locating, setLocating] = useState(false);
+  const [sosLoading, setSosLoading] = useState(false);
 
   const [describeText, setDescribeText] = useState("");
   const [suggesting, setSuggesting] = useState(false);
@@ -34,6 +62,9 @@ export default function Home() {
   const [geocodeError, setGeocodeError] = useState(null);
   const [resolvedAddress, setResolvedAddress] = useState(null);
 
+  const [nearbyCount, setNearbyCount] = useState(null);
+  const [nearbyCountLoading, setNearbyCountLoading] = useState(false);
+
   const [form, setForm] = useState({
     faultTypeId: "",
     vehicleId: "",
@@ -43,25 +74,58 @@ export default function Home() {
   });
 
   useEffect(() => {
-    Promise.all([api.get("/api/fault-types"), api.get("/api/vehicles/my")])
-      .then(([faults, myVehicles]) => {
+    Promise.all([api.get("/api/fault-types"), api.get("/api/vehicles/my"), api.get("/api/bookings/my")])
+      .then(([faults, myVehicles, myBookings]) => {
         setFaultTypes(faults);
         setVehicles(myVehicles);
+        setBookings(myBookings.sort((a, b) => b.id - a.id));
+        const lastLocation = getLastLocation();
         setForm((f) => ({
           ...f,
           faultTypeId: faults[0]?.id ?? "",
           vehicleId: myVehicles[0]?.id ?? "",
+          lat: lastLocation?.lat ?? f.lat,
+          lng: lastLocation?.lng ?? f.lng,
         }));
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (!form.lat || !form.lng) {
+      setNearbyCount(null);
+      return;
+    }
+    let cancelled = false;
+    setNearbyCountLoading(true);
+    const timer = setTimeout(() => {
+      api
+        .get(`/api/garages/nearby?lat=${form.lat}&lng=${form.lng}&radiusKm=${form.radiusKm}`)
+        .then((list) => {
+          if (!cancelled) setNearbyCount(list.length);
+        })
+        .catch(() => {
+          if (!cancelled) setNearbyCount(null);
+        })
+        .finally(() => {
+          if (!cancelled) setNearbyCountLoading(false);
+        });
+    }, 500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [form.lat, form.lng, form.radiusKm]);
+
   const locate = () => {
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setForm((f) => ({ ...f, lat: pos.coords.latitude.toFixed(5), lng: pos.coords.longitude.toFixed(5) }));
+        const lat = pos.coords.latitude.toFixed(5);
+        const lng = pos.coords.longitude.toFixed(5);
+        setForm((f) => ({ ...f, lat, lng }));
+        saveLastLocation(lat, lng);
         setLocating(false);
       },
       () => setLocating(false),
@@ -87,7 +151,10 @@ export default function Home() {
         return;
       }
       const { lat, lon, display_name } = results[0];
-      setForm((f) => ({ ...f, lat: Number(lat).toFixed(5), lng: Number(lon).toFixed(5) }));
+      const fixedLat = Number(lat).toFixed(5);
+      const fixedLng = Number(lon).toFixed(5);
+      setForm((f) => ({ ...f, lat: fixedLat, lng: fixedLng }));
+      saveLastLocation(fixedLat, fixedLng);
       setResolvedAddress(display_name);
     } catch (err) {
       setGeocodeError("Couldn't look up that address right now.");
@@ -129,6 +196,50 @@ export default function Home() {
     navigate(`/customer/results?${params.toString()}`);
   };
 
+  const rebook = (booking) => {
+    const vehicleStillExists = vehicles.some((v) => v.id === booking.vehicle.id);
+    const vehicleId = vehicleStillExists ? booking.vehicle.id : vehicles[0]?.id;
+    const vehicle = vehicles.find((v) => v.id === vehicleId);
+    if (!vehicle) return;
+    const params = new URLSearchParams({
+      lat: booking.serviceLatitude ?? form.lat,
+      lng: booking.serviceLongitude ?? form.lng,
+      radiusKm: form.radiusKm,
+      faultTypeId: booking.faultType.id,
+      vehicleTypeId: vehicle.vehicleType.id,
+      vehicleId: vehicle.id,
+    });
+    navigate(`/customer/results?${params.toString()}`);
+  };
+
+  const sos = () => {
+    setSosLoading(true);
+    setError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude.toFixed(5);
+        const lng = pos.coords.longitude.toFixed(5);
+        saveLastLocation(lat, lng);
+        const vehicle = vehicles.find((v) => String(v.id) === String(form.vehicleId)) || vehicles[0];
+        const params = new URLSearchParams({
+          lat,
+          lng,
+          radiusKm: 100,
+          faultTypeId: form.faultTypeId || faultTypes[0]?.id,
+          vehicleTypeId: vehicle.vehicleType.id,
+          vehicleId: vehicle.id,
+        });
+        setSosLoading(false);
+        navigate(`/customer/results?${params.toString()}`);
+      },
+      () => {
+        setSosLoading(false);
+        setError("Couldn't get your location. Please allow location access and try again.");
+      },
+      { timeout: 8000 }
+    );
+  };
+
   if (loading) return html`<${Layout} title="RoadFix"><div style=${{ marginTop: 60 }}><${Spinner} dark /></div><//>`;
 
   if (vehicles.length === 0) {
@@ -144,12 +255,46 @@ export default function Home() {
     `;
   }
 
+  const activeBooking = bookings.find((b) => ACTIVE_STATUSES.has(b.status));
+  const lastFinishedBooking = bookings.find((b) => FINISHED_STATUSES.has(b.status));
+  const selectedFault = faultTypes.find((f) => String(f.id) === String(form.faultTypeId));
+  const selectedVehicle = vehicles.find((v) => String(v.id) === String(form.vehicleId));
+
   return html`
     <${Layout} title="RoadFix">
       <div className="home-hero">
         <h2>Hey ${session?.username || "there"} 👋</h2>
         <p>What's wrong with your ride today?</p>
       </div>
+
+      ${activeBooking &&
+      html`
+        <div className="info-banner" onClick=${() => navigate("/customer/bookings")}>
+          <span className="info-banner-icon">🔧</span>
+          <div>
+            <p className="info-banner-title">You have an active booking at ${activeBooking.garage.name}</p>
+            <p className="info-banner-sub">${activeBooking.status.replace("_", " ")} · tap to view</p>
+          </div>
+          <span className="info-banner-arrow">→</span>
+        </div>
+      `}
+
+      ${lastFinishedBooking &&
+      html`
+        <div className="info-banner" onClick=${() => rebook(lastFinishedBooking)}>
+          <span className="info-banner-icon">🔁</span>
+          <div>
+            <p className="info-banner-title">Book again with ${lastFinishedBooking.garage.name}</p>
+            <p className="info-banner-sub">${lastFinishedBooking.faultType.name.replaceAll("_", " ")} · same spot as last time</p>
+          </div>
+          <span className="info-banner-arrow">→</span>
+        </div>
+      `}
+
+      <button type="button" className="sos-btn" disabled=${sosLoading} onClick=${sos}>
+        ${sosLoading ? "Locating you…" : "🚨 Stuck right now? Get instant help"}
+      </button>
+
       ${error && html`<div className="error-banner">${error}</div>`}
       <form onSubmit=${findGarages}>
         <div className="card">
@@ -190,14 +335,24 @@ export default function Home() {
                 `
               )}
             </div>
+            ${selectedFault && html`<p className="muted" style=${{ marginTop: 8 }}>${selectedFault.description}</p>`}
           </div>
           <div className="field">
             <label>Which vehicle?</label>
-            <select value=${form.vehicleId} onChange=${(e) => setForm({ ...form, vehicleId: e.target.value })}>
+            <div className="vehicle-grid">
               ${vehicles.map(
-                (v) => html`<option key=${v.id} value=${v.id}>${v.model || v.vehicleType.name} · ${v.licensePlate || "no plate"}<//>`
+                (v) => html`
+                  <div
+                    key=${v.id}
+                    className=${`vehicle-chip ${String(form.vehicleId) === String(v.id) ? "active" : ""}`}
+                    onClick=${() => setForm({ ...form, vehicleId: v.id })}
+                  >
+                    <span className="vehicle-emoji">${VEHICLE_EMOJI[v.vehicleType.name] || "🚗"}</span>
+                    <span>${v.model || v.vehicleType.name} · ${v.licensePlate || "no plate"}</span>
+                  </div>
+                `
               )}
-            </select>
+            </div>
           </div>
           <div className="field">
             <label>📍 Your location</label>
@@ -236,6 +391,13 @@ export default function Home() {
                   ${resolvedAddress &&
                   html`<p className="muted" style=${{ marginTop: 6 }}>📍 ${resolvedAddress}</p>`}
                 `}
+            ${form.lat &&
+            form.lng &&
+            html`
+              <div className="stat-badge">
+                🏠 ${nearbyCountLoading ? "Checking nearby garages…" : `${nearbyCount ?? 0} garage${nearbyCount === 1 ? "" : "s"} within ${form.radiusKm} km`}
+              </div>
+            `}
           </div>
           <div className="field">
             <label>Search radius: ${form.radiusKm} km</label>

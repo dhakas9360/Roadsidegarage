@@ -78,37 +78,52 @@ export default function Profile() {
 
   if (loading) return html`<${Layout} title="Profile" back=${back}><${Spinner} dark /><//>`;
 
+  const initial = (profile.username || "?").charAt(0).toUpperCase();
+
   return html`
     <${Layout} title="Profile" back=${back}>
       ${error && html`<div className="error-banner">${error}</div>`}
 
+      <div className="profile-hero">
+        <div className="profile-avatar">${initial}</div>
+        <h2>${profile.username}</h2>
+        <p>${profile.email}</p>
+        <div className="badge-row">
+          ${(profile.roles || []).map((r) => html`<span key=${r} className="badge badge-ASSIGNED">${ROLE_LABELS[r] || r}</span>`)}
+        </div>
+      </div>
+
       <div className="card">
-        <div className="card-row" style=${{ marginBottom: 12 }}>
+        <div className="card-row" style=${{ marginBottom: editing ? 12 : 4 }}>
           <p className="card-title" style=${{ margin: 0 }}>User details</p>
-          ${!editing && html`<${Button} size="sm" variant="outline" onClick=${startEdit}>Edit<//>`}
+          ${!editing && html`<${Button} size="sm" variant="outline" onClick=${startEdit}>✏️ Edit<//>`}
         </div>
 
         ${editing
           ? html`
               <form onSubmit=${saveEdit}>
-                <div className="field">
+                <div className="field field-icon">
                   <label>Username</label>
+                  <span className="field-icon-glyph">👤</span>
                   <input value=${profile.username} disabled />
                 </div>
-                <div className="field">
+                <div className="field field-icon">
                   <label>Email ID</label>
+                  <span className="field-icon-glyph">📧</span>
                   <input type="email" value=${form.email} onChange=${(e) => setForm({ ...form, email: e.target.value })} />
                 </div>
-                <div className="field">
+                <div className="field field-icon">
                   <label>Contact number</label>
+                  <span className="field-icon-glyph">📱</span>
                   <input value=${form.phone} onChange=${(e) => setForm({ ...form, phone: e.target.value })} />
                 </div>
-                <div className="field">
+                <div className="field field-icon">
                   <label>Nationality</label>
+                  <span className="field-icon-glyph">🌍</span>
                   <input value=${form.nationality} onChange=${(e) => setForm({ ...form, nationality: e.target.value })} placeholder="e.g. Indian" />
                 </div>
                 <div className="field">
-                  <label>Residential address</label>
+                  <label>🏠 Residential address</label>
                   <textarea
                     value=${form.residentialAddress}
                     onChange=${(e) => setForm({ ...form, residentialAddress: e.target.value })}
@@ -123,22 +138,40 @@ export default function Profile() {
               </form>
             `
           : html`
-              <p className="card-sub">Username: <strong>${profile.username}</strong></p>
-              <p className="card-sub">Email ID: ${profile.email}</p>
-              <p className="card-sub">Contact number: ${profile.phone}</p>
-              <p className="card-sub">Nationality: ${profile.nationality || "—"}</p>
-              <p className="card-sub">Residential address: ${profile.residentialAddress || "—"}</p>
-              <div style=${{ marginTop: 8 }}>
-                ${(profile.roles || []).map(
-                  (r) => html`<span key=${r} className="badge badge-ASSIGNED" style=${{ marginRight: 6 }}>${ROLE_LABELS[r] || r}</span>`
-                )}
+              <div className="detail-row">
+                <span className="detail-icon">📧</span>
+                <div>
+                  <p className="detail-label">Email ID</p>
+                  <p className="detail-value">${profile.email}</p>
+                </div>
+              </div>
+              <div className="detail-row">
+                <span className="detail-icon">📱</span>
+                <div>
+                  <p className="detail-label">Contact number</p>
+                  <p className="detail-value">${profile.phone}</p>
+                </div>
+              </div>
+              <div className="detail-row">
+                <span className="detail-icon">🌍</span>
+                <div>
+                  <p className="detail-label">Nationality</p>
+                  <p className="detail-value">${profile.nationality || "—"}</p>
+                </div>
+              </div>
+              <div className="detail-row">
+                <span className="detail-icon">🏠</span>
+                <div>
+                  <p className="detail-label">Residential address</p>
+                  <p className="detail-value">${profile.residentialAddress || "—"}</p>
+                </div>
               </div>
             `}
       </div>
 
       ${isCustomer &&
       html`
-        <p className="section-title">Order list</p>
+        <p className="section-title">🧾 Order list</p>
         ${orders.length === 0 && html`<${EmptyState} emoji="🧾" title="No orders yet" subtitle="Your bookings will show up here." />`}
         ${orders.map(
           (o) => html`
@@ -155,7 +188,7 @@ export default function Profile() {
         )}
       `}
 
-      <p className="section-title">Settings</p>
+      <p className="section-title">⚙️ Settings</p>
       <div className="card card-row">
         <div>
           <p className="card-title" style=${{ margin: 0 }}>Appearance</p>
@@ -173,7 +206,7 @@ export default function Profile() {
           navigate("/login");
         }}
       >
-        Log out
+        🚪 Log out
       <//>
     <//>
   `;
