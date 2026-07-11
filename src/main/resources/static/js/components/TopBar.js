@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import html from "../lib/html.js";
 import { useAuth } from "../auth.js";
 import { navigate } from "../router.js";
@@ -9,6 +9,17 @@ const POLL_MS = 15000;
 export default function TopBar({ title, subtitle, back }) {
   const { logout, session } = useAuth();
   const [unread, setUnread] = useState(0);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [menuOpen]);
 
   useEffect(() => {
     if (!session) return;
@@ -41,16 +52,44 @@ export default function TopBar({ title, subtitle, back }) {
             🔔
             ${unread > 0 && html`<span className="notif-badge">${unread > 9 ? "9+" : unread}</span>`}
           </button>
-          <button
-            className="icon-btn"
-            title="Log out"
-            onClick=${() => {
-              logout();
-              navigate("/login");
-            }}
-          >
-            ⏻
-          </button>
+          <div className="user-menu" ref=${menuRef} style=${{ position: "relative" }}>
+            <button className="icon-btn" title="Account" onClick=${() => setMenuOpen((v) => !v)}>
+              👤
+            </button>
+            ${menuOpen &&
+            html`
+              <div className="user-menu-dropdown">
+                <button
+                  className="user-menu-item"
+                  onClick=${() => {
+                    setMenuOpen(false);
+                    navigate("/profile");
+                  }}
+                >
+                  <span className="user-menu-icon">👤</span>User Profile
+                </button>
+                <button
+                  className="user-menu-item"
+                  onClick=${() => {
+                    setMenuOpen(false);
+                    navigate("/settings");
+                  }}
+                >
+                  <span className="user-menu-icon">⚙️</span>Settings
+                </button>
+                <button
+                  className="user-menu-item user-menu-item-danger"
+                  onClick=${() => {
+                    setMenuOpen(false);
+                    logout();
+                    navigate("/login");
+                  }}
+                >
+                  <span className="user-menu-icon">🚪</span>Log out
+                </button>
+              </div>
+            `}
+          </div>
         </div>
       </div>
       ${subtitle && html`<div className="topbar-sub">${subtitle}</div>`}

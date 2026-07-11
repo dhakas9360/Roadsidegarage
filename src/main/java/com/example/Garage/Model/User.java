@@ -28,6 +28,11 @@ public class User {
     @Column(nullable = false)
     private String phone;
 
+    private String nationality;
+
+    @Column(length = 500)
+    private String residentialAddress;
+
     private boolean enabled = true;
 
     @ManyToMany(fetch = FetchType.EAGER)

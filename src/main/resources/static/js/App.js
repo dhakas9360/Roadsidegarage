@@ -6,6 +6,7 @@ import { useRoute, navigate } from "./router.js";
 import Login from "./pages/Login.js";
 import Register from "./pages/Register.js";
 import Notifications from "./pages/Notifications.js";
+import Profile from "./pages/Profile.js";
 
 import Home from "./pages/customer/Home.js";
 import GarageResults from "./pages/customer/GarageResults.js";
@@ -23,6 +24,8 @@ const PUBLIC_ROUTES = { "/login": Login, "/register": Register };
 
 const PROTECTED_ROUTES = {
   "/notifications": { role: null, Component: Notifications },
+  "/profile": { role: null, Component: Profile },
+  "/settings": { role: null, Component: Profile },
 
   "/customer/home": { role: "ROLE_USER", Component: Home },
   "/customer/results": { role: "ROLE_USER", Component: GarageResults },
