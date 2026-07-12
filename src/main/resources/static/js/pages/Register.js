@@ -103,6 +103,7 @@ export default function Register() {
             Already have an account? <${Link} to="/login" className="link-plain">Log in<//>
           </div>
         </div>
+        <div className="auth-footer">Created by <a href="mailto:dhakaankit357@gmail.com">Ankit Dhaka<//><//>
       </div>
     </div>
   `;

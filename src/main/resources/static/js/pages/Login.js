@@ -59,6 +59,7 @@ export default function Login() {
             New here? <${Link} to="/register" className="link-plain">Create an account<//>
           </div>
         </div>
+        <div className="auth-footer">Created by <a href="mailto:dhakaankit357@gmail.com">Ankit Dhaka<//><//>
       </div>
     </div>
   `;
