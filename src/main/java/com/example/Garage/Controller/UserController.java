@@ -9,6 +9,7 @@ import com.example.Garage.service.CurrentUserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -25,6 +26,14 @@ public class UserController {
     @GetMapping("/me")
     public ResponseEntity<UserProfileResponse> me() {
         return ResponseEntity.ok(toResponse(currentUserService.getCurrentUser()));
+    }
+
+    // Read-only roster of every registered account, for garage owners to see who's on the platform.
+    @GetMapping
+    @PreAuthorize("hasAuthority('ROLE_GARAGE_OWNER')")
+    public ResponseEntity<List<UserProfileResponse>> listAll() {
+        List<UserProfileResponse> users = userRepository.findAll().stream().map(this::toResponse).collect(Collectors.toList());
+        return ResponseEntity.ok(users);
     }
 
     @PutMapping("/me")
