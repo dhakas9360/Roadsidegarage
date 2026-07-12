@@ -1,5 +1,6 @@
 package com.example.Garage.Controller;
 
+import com.example.Garage.Dto.GarageJoinRequest;
 import com.example.Garage.Dto.GarageMemberRequest;
 import com.example.Garage.Dto.UserSummaryResponse;
 import com.example.Garage.Model.Garage;
@@ -54,6 +55,26 @@ public class GarageMemberController {
         GarageMember member = new GarageMember();
         member.setGarage(garage);
         member.setUserId(user.getId());
+        member.setLatitude(request.getLatitude());
+        member.setLongitude(request.getLongitude());
+
+        return ResponseEntity.ok(garageMemberRepo.save(member));
+    }
+
+    @PostMapping("/join")
+    @PreAuthorize("hasAuthority('ROLE_GARAGE_MEMBER')")
+    public ResponseEntity<?> joinGarage(@Valid @RequestBody GarageJoinRequest request) {
+        Long userId = currentUserService.getCurrentUserId();
+        if (garageMemberRepo.findByUserId(userId).isPresent()) {
+            return ResponseEntity.badRequest().body("You're already linked to a garage");
+        }
+
+        Garage garage = garageRepo.findById(request.getGarageId())
+                .orElseThrow(() -> new ResourceNotFoundException("Garage not found"));
+
+        GarageMember member = new GarageMember();
+        member.setGarage(garage);
+        member.setUserId(userId);
         member.setLatitude(request.getLatitude());
         member.setLongitude(request.getLongitude());
 

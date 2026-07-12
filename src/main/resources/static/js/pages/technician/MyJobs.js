@@ -9,16 +9,23 @@ import { api } from "../../api.js";
 export default function MyJobs() {
   const [jobs, setJobs] = useState([]);
   const [profile, setProfile] = useState(null);
+  const [garages, setGarages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [joiningId, setJoiningId] = useState(null);
   const [togglingAvail, setTogglingAvail] = useState(false);
 
   const load = () =>
-    Promise.all([api.get("/api/jobs/assigned"), api.get("/api/garage-members/me")])
-      .then(([j, p]) => {
-        setJobs(j.sort((a, b) => b.id - a.id));
+    api
+      .get("/api/garage-members/me")
+      .then((p) => {
         setProfile(p);
+        return api.get("/api/jobs/assigned").then((j) => setJobs(j.sort((a, b) => b.id - a.id)));
+      })
+      .catch(() => {
+        setProfile(null);
+        return api.get("/api/garages").then(setGarages);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -26,6 +33,20 @@ export default function MyJobs() {
   useEffect(() => {
     load();
   }, []);
+
+  const joinGarage = async (garageId) => {
+    setJoiningId(garageId);
+    setError(null);
+    try {
+      await api.post("/api/garage-members/join", { garageId });
+      setLoading(true);
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setJoiningId(null);
+    }
+  };
 
   const act = async (id, action) => {
     setBusyId(id);
@@ -56,8 +77,21 @@ export default function MyJobs() {
 
   if (!profile) {
     return html`
-      <${Layout} title="My jobs">
-        <${EmptyState} emoji="🔧" title="Not linked to a garage yet" subtitle="Ask a garage owner to add you as a technician." />
+      <${Layout} title="My jobs" subtitle="Join a garage to start getting jobs">
+        ${error && html`<div className="error-banner">${error}</div>`}
+        ${garages.length === 0
+          ? html`<${EmptyState} emoji="🔧" title="No garages yet" subtitle="Once a garage owner registers one, it'll show up here to join." />`
+          : garages.map(
+              (g) => html`
+                <div key=${g.id} className="card card-row">
+                  <div>
+                    <p className="card-title">${g.name}</p>
+                    <p className="card-sub">${g.address}</p>
+                  </div>
+                  <${Button} size="sm" loading=${joiningId === g.id} onClick=${() => joinGarage(g.id)}>Join<//>
+                </div>
+              `
+            )}
       <//>
     `;
   }
