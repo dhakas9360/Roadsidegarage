@@ -75,7 +75,6 @@ public class AuthController {
 
         List<String> roles = user.getRoles().stream().map(Role::getName).collect(Collectors.toList());
         String token = jwtUtils.generateJwtToken(user.getUsername(), roles);
-// wlkejrlwej
         return ResponseEntity.ok(new AuthResponse(token, "Bearer", user.getId(), user.getUsername(), roles));
     }
 }
