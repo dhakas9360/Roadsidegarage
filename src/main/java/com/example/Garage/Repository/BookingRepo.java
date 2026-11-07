@@ -16,5 +16,7 @@ public interface BookingRepo extends JpaRepository<Booking, Long> {
     List<Booking> findByAssignedMember(GarageMember assignedMember);
     List<Booking> findByGarage(Garage garage);
     List<Booking> findByUserId(Long userId);
+    boolean existsByVehicle_IdAndStatusIn(Long vehicleId, java.util.Collection<BookingStatus> statuses);
+    List<Booking> findByGarage_IdAndStatusOrderByCreatedAtAsc(Long garageId, BookingStatus status);
     List<Booking> findByGarage_IdAndStatusAndRatedAtBetween(Long garageId, BookingStatus status, LocalDateTime start, LocalDateTime end);
 }

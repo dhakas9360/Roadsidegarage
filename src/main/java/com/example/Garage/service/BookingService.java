@@ -6,15 +6,26 @@ import com.example.Garage.exception.ForbiddenActionException;
 import com.example.Garage.exception.GarageFullException;
 import com.example.Garage.exception.InvalidStateTransitionException;
 import com.example.Garage.exception.ResourceNotFoundException;
+import com.example.Garage.exception.BadRequestException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
+@Transactional
 public class BookingService {
+
+    /** Statuses in which a booking still occupies the vehicle (job not finished or cancelled). */
+    public static final Set<BookingStatus> ACTIVE_STATUSES =
+            EnumSet.of(BookingStatus.PENDING, BookingStatus.UNASSIGNED, BookingStatus.ASSIGNED, BookingStatus.IN_PROGRESS);
 
     private final BookingRepo bookingRepo;
     private final GarageRepo garageRepo;
@@ -38,6 +49,16 @@ public class BookingService {
 
         FaultType faultType = faultTypeRepo.findById(faultTypeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Fault type not found"));
+
+        // one day of grace so a customer whose local "today" is behind the server's timezone isn't rejected
+        if (date.isBefore(LocalDate.now().minusDays(1))) {
+            throw new BadRequestException("Appointment date cannot be in the past");
+        }
+
+        if (bookingRepo.existsByVehicle_IdAndStatusIn(vehicleId, ACTIVE_STATUSES)) {
+            throw new InvalidStateTransitionException(
+                    "This vehicle already has an active booking. Cancel it or wait until it's completed.");
+        }
 
         long activeCount = bookingRepo.countByGarageAndAppointmentDateAndStatusNot(garage, date, BookingStatus.CANCELLED);
         if (garage.getDailyCapacity() != null && activeCount >= garage.getDailyCapacity()) {
@@ -74,7 +95,7 @@ public class BookingService {
             notificationService.notify(currentUserId,
                     "Your booking at " + garage.getName() + " is pending — we're finding you a technician.", saved.getId());
             notificationService.notify(garage.getOwnerUserId(),
-                    "New booking needs a technician: " + faultType.getName().replace("_", " ") + " at " + garage.getName() + ".",
+                    "New booking needs a technician: " + faultType.getName().replace("_", " ").toLowerCase() + " at " + garage.getName() + ".",
                     saved.getId());
         }
 
@@ -106,14 +127,36 @@ public class BookingService {
         booking.setStatus(BookingStatus.CANCELLED);
         Booking saved = bookingRepo.save(booking);
 
-        if (isGarageOwner) {
+        if (isGarageOwner && !isBookingOwner) {
             notificationService.notify(saved.getUserId(),
                     "Your booking at " + saved.getGarage().getName() + " was cancelled by the garage.", saved.getId());
-        } else if (member != null) {
-            notificationService.notify(member.getUserId(), "A job assigned to you was cancelled by the customer.", saved.getId());
+        }
+        if (member != null) {
+            notificationService.notify(member.getUserId(),
+                    "A job assigned to you was cancelled by the " + (isBookingOwner ? "customer" : "garage") + ".",
+                    saved.getId());
+            // the technician just freed up a slot -> hand them the next waiting booking, if any
+            dispatchWaitingBookings(saved.getGarage().getId());
         }
 
         return saved;
+    }
+
+    /**
+     * Auto-dispatch: hands UNASSIGNED bookings at a garage (oldest first) to available technicians.
+     * Called whenever technician capacity may have appeared — a technician joins, comes back online,
+     * finishes a job, or has a job cancelled — so customers don't sit waiting for the owner to press
+     * "retry" manually. Returns the bookings that got assigned.
+     */
+    @Transactional
+    public List<Booking> dispatchWaitingBookings(Long garageId) {
+        List<Booking> dispatched = new ArrayList<>();
+        for (Booking waiting : bookingRepo.findByGarage_IdAndStatusOrderByCreatedAtAsc(garageId, BookingStatus.UNASSIGNED)) {
+            GarageMember technician = assignmentService.assignTechnician(waiting);
+            if (technician == null) break; // nobody available, the rest keep waiting
+            dispatched.add(assignToBooking(waiting, technician));
+        }
+        return dispatched;
     }
 
     /** Retries auto-assignment (by rating) for a booking that was left UNASSIGNED because every technician was busy. */
@@ -159,7 +202,7 @@ public class BookingService {
         garageMemberRepo.save(technician);
         Booking saved = bookingRepo.save(booking);
 
-        String faultLabel = saved.getFaultType().getName().replace("_", " ");
+        String faultLabel = saved.getFaultType().getName().replace("_", " ").toLowerCase();
         notificationService.notify(saved.getUserId(),
                 "Your " + faultLabel + " booking at " + saved.getGarage().getName() + " has been assigned to a technician.",
                 saved.getId());

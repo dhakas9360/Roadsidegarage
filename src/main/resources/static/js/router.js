@@ -5,6 +5,14 @@ function currentHash() {
   return window.location.hash.replace(/^#/, "") || "/";
 }
 
+// A new page should start at the top instead of inheriting the previous page's scroll position.
+let lastPath = currentHash().split("?")[0];
+window.addEventListener("hashchange", () => {
+  const path = currentHash().split("?")[0];
+  if (path !== lastPath) window.scrollTo(0, 0);
+  lastPath = path;
+});
+
 export function navigate(path) {
   window.location.hash = path;
 }

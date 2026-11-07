@@ -1,19 +1,37 @@
 import { useEffect, useState } from "react";
 import html from "../../../lib/html.js";
-import Button from "../../../components/Button.js";
+import Button, { ConfirmButton } from "../../../components/Button.js";
+import Icon from "../../../components/Icon.js";
+import { Alert } from "../../../components/Layout.js";
 import StatusBadge from "../../../components/StatusBadge.js";
-import Spinner, { EmptyState } from "../../../components/Spinner.js";
+import { RatingStars } from "../../../components/RatingStars.js";
+import { SkeletonList, EmptyState } from "../../../components/Spinner.js";
 import { api } from "../../../api.js";
+import { ACTIVE_STATUSES, humanize, money, friendlyDate, poll } from "../../../lib/format.js";
 
-const CANCELLABLE = new Set(["PENDING", "UNASSIGNED", "ASSIGNED", "IN_PROGRESS"]);
+const FILTERS = [
+  { key: "active", label: "Active" },
+  { key: "waiting", label: "Needs technician" },
+  { key: "done", label: "Done" },
+  { key: "all", label: "All" },
+];
 
-export default function BookingsTab({ garageId }) {
+const MATCH = {
+  active: (b) => ACTIVE_STATUSES.has(b.status),
+  waiting: (b) => b.status === "UNASSIGNED",
+  done: (b) => !ACTIVE_STATUSES.has(b.status),
+  all: () => true,
+};
+
+export default function BookingsTab({ garageId, onChange }) {
   const [bookings, setBookings] = useState([]);
   const [technicians, setTechnicians] = useState([]);
   const [picked, setPicked] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [chosenFilter, setFilter] = useState(null);
 
   const load = () =>
     Promise.all([api.get(`/api/bookings/garage/${garageId}`), api.get(`/api/garage-members/garage/${garageId}`)])
@@ -26,13 +44,17 @@ export default function BookingsTab({ garageId }) {
 
   useEffect(() => {
     load();
+    return poll(load, 15000);
   }, [garageId]);
 
-  const cancel = async (id) => {
+  const run = async (id, fn) => {
     setBusyId(id);
+    setError(null);
+    setNotice(null);
     try {
-      await api.patch(`/api/bookings/${id}/cancel`);
+      await fn();
       await load();
+      onChange?.();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -40,85 +62,88 @@ export default function BookingsTab({ garageId }) {
     }
   };
 
-  const retryAutoAssign = async (id) => {
-    setBusyId(id);
-    setError(null);
-    try {
+  const cancel = (id) => run(id, () => api.patch(`/api/bookings/${id}/cancel`));
+
+  const retryAutoAssign = (id) =>
+    run(id, async () => {
       const result = await api.patch(`/api/bookings/${id}/reassign`);
-      if (result.status === "UNASSIGNED") setError("Still no technician available at this garage.");
-      await load();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusyId(null);
-    }
+      if (result.status === "UNASSIGNED") setNotice("Every technician is offline or at their job limit. The booking will be assigned automatically when someone frees up.");
+    });
+
+  const assignPicked = (id) => {
+    if (!picked[id]) return setError("Pick a technician first.");
+    return run(id, () => api.patch(`/api/bookings/${id}/assign?technicianId=${picked[id]}`));
   };
 
-  const assignPicked = async (id) => {
-    const technicianId = picked[id];
-    if (!technicianId) {
-      setError("Pick a technician first.");
-      return;
-    }
-    setBusyId(id);
-    setError(null);
-    try {
-      await api.patch(`/api/bookings/${id}/assign?technicianId=${technicianId}`);
-      await load();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusyId(null);
-    }
-  };
+  if (loading) return html`<${SkeletonList} count=${2} />`;
 
-  if (loading) return html`<${Spinner} dark />`;
+  const counts = Object.fromEntries(FILTERS.map((f) => [f.key, bookings.filter(MATCH[f.key]).length]));
+  // open on what needs attention: waiting > active > everything
+  const filter = chosenFilter ?? (counts.waiting ? "waiting" : counts.active ? "active" : "all");
+  const visible = bookings.filter(MATCH[filter]);
 
   return html`
-    ${error && html`<div className="error-banner">${error}</div>`}
-    ${bookings.length === 0 && html`<${EmptyState} emoji="🧾" title="No bookings yet" />`}
-    ${bookings.map(
+    <${Alert} onClose=${() => setError(null)}>${error}<//>
+    <${Alert} tone="info" onClose=${() => setNotice(null)}>${notice}<//>
+
+    <div className="chips">
+      ${FILTERS.map(
+        (f) => html`<button key=${f.key} type="button" className=${`chip ${filter === f.key ? "active" : ""}`} onClick=${() => setFilter(f.key)}>${f.label} · ${counts[f.key]}</button>`
+      )}
+    </div>
+
+    ${visible.length === 0 &&
+    html`<div className="card"><${EmptyState} icon="receipt" title=${bookings.length ? "Nothing here" : "No bookings yet"} subtitle=${bookings.length ? "Try another filter." : "Bookings from nearby customers will appear here."} /></div>`}
+
+    ${visible.map(
       (b) => html`
-        <div key=${b.id} className="card">
-          <div className="card-row">
-            <div>
-              <p className="card-title">${b.faultType.name.replaceAll("_", " ")}</p>
-              <p className="card-sub">${b.vehicle.vehicleType.name} · ${b.appointmentDate}</p>
+        <article key=${b.id} className="card fade-in">
+          <div className="card-row top">
+            <div style=${{ minWidth: 0 }}>
+              <p className="card-title">${humanize(b.faultType.name)}</p>
+              <p className="card-sub">#${b.id} · ${friendlyDate(b.appointmentDate)} · ${humanize(b.vehicle.vehicleType.name)}${b.vehicle.model ? ` ${b.vehicle.model}` : ""}</p>
             </div>
             <${StatusBadge} status=${b.status} />
           </div>
-          ${b.serviceAddress && html`<p className="card-sub" style=${{ marginTop: 6 }}>📍 ${b.serviceAddress}</p>`}
-          <p className="card-sub" style=${{ marginTop: 2 }}>
-            👤 ${b.customerName || "unknown"}${b.customerPhone ? ` · ${b.customerPhone}` : ""}
-            ${b.technicianName && html` · 🔧 ${b.technicianName}`}
-          </p>
+          <div className="meta-list">
+            <span className="meta">
+              <${Icon} name="user" size=${15} /><span>${b.customerName || "Customer"}</span>
+              ${b.customerPhone && html`<span className="meta-sep">·</span><a href=${`tel:${b.customerPhone}`}>${b.customerPhone}</a>`}
+            </span>
+            ${b.serviceAddress && html`<span className="meta"><${Icon} name="pin" size=${15} /> ${b.serviceAddress}</span>`}
+            ${b.technicianName && html`<span className="meta"><${Icon} name="wrench" size=${15} /> ${b.technicianName}</span>`}
+            ${b.status === "RATED" && html`<span className="meta"><${RatingStars} value=${b.rating} />${b.ratingComment && html`<span className="muted">“${b.ratingComment}”</span>`}</span>`}
+          </div>
+
           ${b.status === "UNASSIGNED" &&
           html`
-            <div className="card-row" style=${{ marginTop: 10, flexWrap: "wrap", gap: 8 }}>
-              <select
-                value=${picked[b.id] || ""}
-                onChange=${(e) => setPicked({ ...picked, [b.id]: e.target.value })}
-                style=${{ flex: 1, minWidth: 140 }}
-              >
-                <option value="">Pick a technician...</option>
-                ${technicians.map(
-                  (t) => html`<option key=${t.id} value=${t.id}>${t.username || `Tech #${t.userId}`} (${t.activeJobs || 0} active)<//>`
-                )}
-              </select>
-              <${Button} size="sm" loading=${busyId === b.id} onClick=${() => assignPicked(b.id)}>Assign<//>
+            <div className="alert alert-warning" style=${{ marginTop: 12, marginBottom: 10 }}>
+              <span className="alert-text">Waiting for a technician. Assign one now, or it'll be picked up automatically when someone frees up.</span>
             </div>
-            <div style=${{ marginTop: 8 }}>
-              <${Button} size="sm" variant="outline" loading=${busyId === b.id} onClick=${() => retryAutoAssign(b.id)}>
-                🔁 Retry auto-assign (top rated)
-              <//>
-            </div>
+            ${technicians.length === 0
+              ? html`<p className="hint">No technicians in this garage yet — add one from the Team tab.</p>`
+              : html`
+                  <div className="input-row">
+                    <select className="input" aria-label="Technician" value=${picked[b.id] || ""} onChange=${(e) => setPicked({ ...picked, [b.id]: e.target.value })}>
+                      <option value="">Choose technician…</option>
+                      ${technicians.map(
+                        (t) => html`<option key=${t.id} value=${t.id}>${t.username || `Tech #${t.userId}`} — ${t.available ? "online" : "offline"}, ${t.activeJobs || 0} active</option>`
+                      )}
+                    </select>
+                    <${Button} size="sm" loading=${busyId === b.id} onClick=${() => assignPicked(b.id)}>Assign<//>
+                  </div>
+                  <div style=${{ marginTop: 8 }}>
+                    <${Button} size="sm" variant="ghost" icon="refresh" disabled=${busyId === b.id} onClick=${() => retryAutoAssign(b.id)}>Auto-assign best available<//>
+                  </div>
+                `}
           `}
-          <div className="card-row" style=${{ marginTop: 10 }}>
-            <div className="muted">₹${b.quotedPrice}</div>
-            ${CANCELLABLE.has(b.status) &&
-            html`<${Button} size="sm" variant="danger" loading=${busyId === b.id} onClick=${() => cancel(b.id)}>Cancel<//>`}
+
+          <div className="card-footer">
+            <span className="price-sm">${money(b.quotedPrice)}</span>
+            ${ACTIVE_STATUSES.has(b.status) &&
+            html`<${ConfirmButton} size="sm" confirmLabel="Confirm cancel" loading=${busyId === b.id} onConfirm=${() => cancel(b.id)}>Cancel booking<//>`}
           </div>
-        </div>
+        </article>
       `
     )}
   `;

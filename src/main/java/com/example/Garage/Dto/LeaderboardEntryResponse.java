@@ -11,4 +11,5 @@ public class LeaderboardEntryResponse {
     private Long technicianUserId;
     private double averageRating;
     private int jobsRatedThisMonth;
+    private String technicianName;
 }

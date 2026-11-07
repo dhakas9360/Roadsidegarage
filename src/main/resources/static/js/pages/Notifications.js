@@ -1,46 +1,53 @@
 import { useEffect, useState } from "react";
 import html from "../lib/html.js";
-import Layout from "../components/Layout.js";
+import Layout, { Alert } from "../components/Layout.js";
 import Button from "../components/Button.js";
-import Spinner, { EmptyState } from "../components/Spinner.js";
+import Icon from "../components/Icon.js";
+import { SkeletonList, EmptyState } from "../components/Spinner.js";
 import { api } from "../api.js";
 import { useAuth, homePathForRole, primaryRole } from "../auth.js";
+import { navigate } from "../router.js";
+import { timeAgo } from "../lib/format.js";
 
-function timeAgo(iso) {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
+// pick an icon + colour from the message text (notifications are plain strings server-side)
+function kindOf(message) {
+  const m = message.toLowerCase();
+  if (m.includes("cancel")) return { icon: "x", tone: "red" };
+  if (m.includes("complete")) return { icon: "check", tone: "green" };
+  if (m.includes("rating") || m.includes("★")) return { icon: "star", tone: "violet" };
+  if (m.includes("started")) return { icon: "wrench", tone: "blue" };
+  if (m.includes("assigned") || m.includes("new job")) return { icon: "user", tone: "blue" };
+  if (m.includes("pending") || m.includes("needs a technician")) return { icon: "clock", tone: "amber" };
+  return { icon: "bell", tone: "" };
+}
+
+function bookingPathFor(role) {
+  if (role === "ROLE_GARAGE_MEMBER") return "/technician/jobs";
+  if (role === "ROLE_USER") return "/customer/bookings";
+  return "/owner/garages";
 }
 
 export default function Notifications() {
-  const { session } = useAuth();
+  const { session, role } = useAuth();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [markingAll, setMarkingAll] = useState(false);
 
-  const load = () =>
+  useEffect(() => {
     api
       .get("/api/notifications")
       .then(setItems)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-
-  useEffect(() => {
-    load();
   }, []);
 
-  const markRead = async (id) => {
-    try {
-      await api.patch(`/api/notifications/${id}/read`);
-      setItems((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
-    } catch (err) {
-      setError(err.message);
+  const open = async (n) => {
+    if (!n.read) {
+      setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+      api.patch(`/api/notifications/${n.id}/read`).catch(() => {});
     }
+    if (n.bookingId) navigate(bookingPathFor(role));
   };
 
   const markAllRead = async () => {
@@ -56,30 +63,37 @@ export default function Notifications() {
   };
 
   const back = session ? homePathForRole(primaryRole(session.roles)) : "/login";
-
-  if (loading) return html`<${Layout} title="Notifications" back=${back}><${Spinner} dark /><//>`;
-
-  const hasUnread = items.some((n) => !n.read);
+  const unreadCount = items.filter((n) => !n.read).length;
 
   return html`
-    <${Layout} title="Notifications" back=${back}>
-      ${error && html`<div className="error-banner">${error}</div>`}
-      ${hasUnread &&
-      html`
-        <div style=${{ textAlign: "right", marginBottom: 10 }}>
-          <${Button} size="sm" variant="outline" loading=${markingAll} onClick=${markAllRead}>Mark all as read<//>
-        </div>
-      `}
-      ${items.length === 0 &&
-      html`<${EmptyState} emoji="🔔" title="No notifications yet" subtitle="Booking updates will show up here." />`}
-      ${items.map(
-        (n) => html`
-          <div key=${n.id} className=${`card notif-item ${n.read ? "" : "unread"}`} onClick=${() => !n.read && markRead(n.id)} style=${{ cursor: n.read ? "default" : "pointer" }}>
-            <p style=${{ margin: 0 }}>${n.message}</p>
-            <p className="muted" style=${{ marginTop: 6, marginBottom: 0 }}>${timeAgo(n.createdAt)}</p>
+    <${Layout}
+      title="Notifications"
+      subtitle=${unreadCount ? `${unreadCount} unread` : undefined}
+      back=${back}
+      actions=${unreadCount > 0 && html`<${Button} size="sm" variant="ghost" icon="check" loading=${markingAll} onClick=${markAllRead}>Read all<//>`}
+    >
+      <${Alert} onClose=${() => setError(null)}>${error}<//>
+      ${loading && html`<${SkeletonList} count=${3} />`}
+      ${!loading && items.length === 0 && html`<div className="card"><${EmptyState} icon="bell" title="You're all caught up" subtitle="Booking updates will show up here." /></div>`}
+      ${items.map((n) => {
+        const k = kindOf(n.message);
+        return html`
+          <div
+            key=${n.id}
+            className=${`card notif-item ${n.read ? "" : "unread"} ${n.bookingId ? "card-interactive" : ""}`}
+            role=${n.bookingId || !n.read ? "button" : undefined}
+            tabIndex=${n.bookingId || !n.read ? "0" : undefined}
+            onClick=${() => open(n)}
+          >
+            <span className=${`notif-icon ${k.tone}`}><${Icon} name=${k.icon} size=${17} /></span>
+            <div className="notif-body">
+              <div className="notif-msg">${n.message}</div>
+              <div className="notif-time">${timeAgo(n.createdAt)}</div>
+            </div>
+            ${!n.read && html`<span className="unread-dot" aria-label="Unread"></span>`}
           </div>
-        `
-      )}
+        `;
+      })}
     <//>
   `;
 }

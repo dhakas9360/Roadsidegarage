@@ -2,29 +2,15 @@ import { useEffect, useState } from "react";
 import html from "../../lib/html.js";
 import Layout from "../../components/Layout.js";
 import Button from "../../components/Button.js";
-import Spinner, { EmptyState } from "../../components/Spinner.js";
+import Icon from "../../components/Icon.js";
+import StatusBadge from "../../components/StatusBadge.js";
+import { Alert } from "../../components/Layout.js";
+import { SkeletonList, EmptyState } from "../../components/Spinner.js";
 import { api } from "../../api.js";
-import { navigate, Link } from "../../router.js";
+import { navigate } from "../../router.js";
 import { useAuth } from "../../auth.js";
+import { FAULT_EMOJI, VEHICLE_EMOJI, ACTIVE_STATUSES, FINISHED_STATUSES, humanize } from "../../lib/format.js";
 
-const FAULT_EMOJI = {
-  BATTERY_ISSUE: "🔋",
-  FLAT_TYRE: "🛞",
-  BRAKE_PROBLEM: "🛑",
-  ENGINE_OVERHEATING: "🌡️",
-  ELECTRICAL_FAULT: "⚡",
-};
-
-const VEHICLE_EMOJI = {
-  BIKE: "🏍️",
-  HATCHBACK: "🚗",
-  SEDAN: "🚘",
-  SUV: "🚙",
-  TRUCK: "🚚",
-};
-
-const ACTIVE_STATUSES = new Set(["PENDING", "UNASSIGNED", "ASSIGNED", "IN_PROGRESS"]);
-const FINISHED_STATUSES = new Set(["COMPLETED", "RATED"]);
 const LAST_LOCATION_KEY = "roadfix.lastLocation";
 
 function saveLastLocation(lat, lng) {
@@ -92,6 +78,10 @@ export default function Home() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Count garages two ways: all nearby, and the ones that can actually take THIS job (they've priced
+  // the selected fault for the selected vehicle type). Only the second kind shows up in search results,
+  // so showing just the first number made garages look bookable when they weren't.
+  const selectedVehicleTypeId = vehicles.find((v) => String(v.id) === String(form.vehicleId))?.vehicleType.id;
   useEffect(() => {
     if (!form.lat || !form.lng) {
       setNearbyCount(null);
@@ -100,10 +90,14 @@ export default function Home() {
     let cancelled = false;
     setNearbyCountLoading(true);
     const timer = setTimeout(() => {
-      api
-        .get(`/api/garages/nearby?lat=${form.lat}&lng=${form.lng}&radiusKm=${form.radiusKm}`)
-        .then((list) => {
-          if (!cancelled) setNearbyCount(list.length);
+      const base = `/api/garages/nearby?lat=${form.lat}&lng=${form.lng}&radiusKm=${form.radiusKm}`;
+      const canFilter = form.faultTypeId && selectedVehicleTypeId;
+      Promise.all([
+        api.get(base),
+        canFilter ? api.get(`${base}&faultTypeId=${form.faultTypeId}&vehicleTypeId=${selectedVehicleTypeId}`) : null,
+      ])
+        .then(([all, bookable]) => {
+          if (!cancelled) setNearbyCount({ total: all.length, bookable: bookable ? bookable.length : all.length });
         })
         .catch(() => {
           if (!cancelled) setNearbyCount(null);
@@ -116,10 +110,15 @@ export default function Home() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [form.lat, form.lng, form.radiusKm]);
+  }, [form.lat, form.lng, form.radiusKm, form.faultTypeId, selectedVehicleTypeId]);
 
   const locate = () => {
+    if (!navigator.geolocation) {
+      setError("Location isn't available in this browser — search by address instead.");
+      return;
+    }
     setLocating(true);
+    setError(null);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const lat = pos.coords.latitude.toFixed(5);
@@ -128,7 +127,10 @@ export default function Home() {
         saveLastLocation(lat, lng);
         setLocating(false);
       },
-      () => setLocating(false),
+      () => {
+        setLocating(false);
+        setError("Couldn't get your location. Allow location access, or search by address instead.");
+      },
       { timeout: 8000 }
     );
   };
@@ -213,6 +215,10 @@ export default function Home() {
   };
 
   const sos = () => {
+    if (!navigator.geolocation) {
+      setError("Location isn't available in this browser — search by address instead.");
+      return;
+    }
     setSosLoading(true);
     setError(null);
     navigator.geolocation.getCurrentPosition(
@@ -240,25 +246,33 @@ export default function Home() {
     );
   };
 
-  if (loading) return html`<${Layout} title="RoadFix"><div style=${{ marginTop: 60 }}><${Spinner} dark /></div><//>`;
+  if (loading) return html`<${Layout} title="RoadFix"><${SkeletonList} count=${3} /><//>`;
 
   if (vehicles.length === 0) {
     return html`
-      <${Layout} title="RoadFix" subtitle="Find help for your vehicle, fast">
-        <${EmptyState}
-          emoji="🚗"
-          title="Add a vehicle first"
-          subtitle="We need to know what you're driving before we can quote a price."
-        />
-        <${Link} to="/customer/vehicles"><${Button}>Add a vehicle<//><//>
+      <${Layout} title="RoadFix">
+        <div className="home-hero">
+          <h2>Hey ${session?.username || "there"} 👋</h2>
+          <p>Let's get your vehicle on file first.</p>
+        </div>
+        <div className="card">
+          <${EmptyState}
+            icon="car"
+            title="Add your first vehicle"
+            subtitle="We need to know what you drive so garages can quote you an exact price."
+          >
+            <${Button} block=${false} icon="plus" onClick=${() => navigate("/customer/vehicles")}>Add a vehicle<//>
+          <//>
+        </div>
       <//>
     `;
   }
 
   const activeBooking = bookings.find((b) => ACTIVE_STATUSES.has(b.status));
-  const lastFinishedBooking = bookings.find((b) => FINISHED_STATUSES.has(b.status));
+  const lastFinishedBooking = !activeBooking && bookings.find((b) => FINISHED_STATUSES.has(b.status));
   const selectedFault = faultTypes.find((f) => String(f.id) === String(form.faultTypeId));
-  const selectedVehicle = vehicles.find((v) => String(v.id) === String(form.vehicleId));
+  const hasLocation = Boolean(form.lat && form.lng);
+  const radiusPct = ((form.radiusKm - 5) / 95) * 100;
 
   return html`
     <${Layout} title="RoadFix">
@@ -269,154 +283,216 @@ export default function Home() {
 
       ${activeBooking &&
       html`
-        <div className="info-banner" onClick=${() => navigate("/customer/bookings")}>
-          <span className="info-banner-icon">🔧</span>
-          <div>
-            <p className="info-banner-title">You have an active booking at ${activeBooking.garage.name}</p>
-            <p className="info-banner-sub">${activeBooking.status.replace("_", " ")} · tap to view</p>
+        <div className="info-banner" role="button" tabIndex="0" onClick=${() => navigate("/customer/bookings")}>
+          <span className="info-banner-icon blue"><${Icon} name="wrench" size=${20} /></span>
+          <div style=${{ minWidth: 0 }}>
+            <p className="info-banner-title">Active booking at ${activeBooking.garage.name}</p>
+            <p className="info-banner-sub">${humanize(activeBooking.faultType.name)} · track progress</p>
           </div>
-          <span className="info-banner-arrow">→</span>
+          <${StatusBadge} status=${activeBooking.status} />
         </div>
       `}
 
       ${lastFinishedBooking &&
       html`
-        <div className="info-banner" onClick=${() => rebook(lastFinishedBooking)}>
-          <span className="info-banner-icon">🔁</span>
-          <div>
+        <div className="info-banner" role="button" tabIndex="0" onClick=${() => rebook(lastFinishedBooking)}>
+          <span className="info-banner-icon"><${Icon} name="refresh" size=${20} /></span>
+          <div style=${{ minWidth: 0 }}>
             <p className="info-banner-title">Book again with ${lastFinishedBooking.garage.name}</p>
-            <p className="info-banner-sub">${lastFinishedBooking.faultType.name.replaceAll("_", " ")} · same spot as last time</p>
+            <p className="info-banner-sub">${humanize(lastFinishedBooking.faultType.name)} · same spot as last time</p>
           </div>
-          <span className="info-banner-arrow">→</span>
+          <span className="info-banner-arrow"><${Icon} name="chevron" size=${18} /></span>
         </div>
       `}
 
       <button type="button" className="sos-btn" disabled=${sosLoading} onClick=${sos}>
-        ${sosLoading ? "Locating you…" : "🚨 Stuck right now? Get instant help"}
+        <span className="sos-icon"><${Icon} name="siren" size=${22} /></span>
+        <span>
+          <span className="sos-title">${sosLoading ? "Locating you…" : "Stuck right now?"}</span>
+          <span className="sos-sub">One tap — we'll find the nearest garage using your GPS</span>
+        </span>
       </button>
 
-      ${error && html`<div className="error-banner">${error}</div>`}
+      <${Alert} onClose=${() => setError(null)}>${error}<//>
+
       <form onSubmit=${findGarages}>
         <div className="card">
           <div className="field">
-            <label>Describe your issue (optional)</label>
-            <textarea
-              rows="2"
-              placeholder="e.g. my car makes a grinding noise when I brake"
-              value=${describeText}
-              onChange=${(e) => setDescribeText(e.target.value)}
-            ></textarea>
-            <div style=${{ marginTop: 8 }}>
-              <${Button} type="button" variant="outline" size="sm" loading=${suggesting} onClick=${suggestFault}>
-                ✨ Suggest fault type
-              <//>
-            </div>
-            ${aiError && html`<p className="muted" style=${{ color: "var(--red)", marginTop: 6 }}>${aiError}</p>`}
-            ${suggestion &&
-            html`
-              <p className="muted" style=${{ marginTop: 6 }}>
-                Looks like <strong>${suggestion.faultTypeName.replaceAll("_", " ")}</strong> (${suggestion.urgency} urgency) — ${suggestion.explanation}
-              </p>
-            `}
-          </div>
-          <div className="field">
-            <label>What's the fault?</label>
-            <div className="fault-grid">
+            <span className="label">What's the problem?</span>
+            <div className="fault-grid" role="radiogroup">
               ${faultTypes.map(
                 (f) => html`
-                  <div
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked=${String(form.faultTypeId) === String(f.id)}
                     key=${f.id}
                     className=${`fault-chip ${String(form.faultTypeId) === String(f.id) ? "active" : ""}`}
                     onClick=${() => setForm({ ...form, faultTypeId: f.id })}
                   >
                     <span className="fault-emoji">${FAULT_EMOJI[f.name] || "🔧"}</span>
-                    <span>${f.name.replaceAll("_", " ")}</span>
-                  </div>
+                    <span>${humanize(f.name)}</span>
+                  </button>
                 `
               )}
             </div>
-            ${selectedFault && html`<p className="muted" style=${{ marginTop: 8 }}>${selectedFault.description}</p>`}
+            ${selectedFault && html`<p className="hint">${selectedFault.description}</p>`}
           </div>
+
           <div className="field">
-            <label>Which vehicle?</label>
-            <div className="vehicle-grid">
+            <label htmlFor="describe">Not sure? Describe it <span className="muted">(optional)</span></label>
+            <div className="input-row">
+              <input
+                id="describe"
+                className="input"
+                placeholder="e.g. grinding noise when I brake"
+                value=${describeText}
+                onChange=${(e) => setDescribeText(e.target.value)}
+              />
+              <${Button} type="button" variant="secondary" size="sm" icon="sparkles" loading=${suggesting} onClick=${suggestFault}>Suggest<//>
+            </div>
+            ${aiError && html`<p className="hint" style=${{ color: "var(--red)" }}>${aiError}</p>`}
+            ${suggestion &&
+            html`
+              <div className="alert alert-info" style=${{ marginTop: 10, marginBottom: 0 }}>
+                <span className="alert-text">
+                  Looks like <strong>${humanize(suggestion.faultTypeName)}</strong> (${suggestion.urgency} urgency) — ${suggestion.explanation}
+                </span>
+              </div>
+            `}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="field">
+            <span className="label">Which vehicle?</span>
+            <div className="vehicle-grid" role="radiogroup">
               ${vehicles.map(
                 (v) => html`
-                  <div
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked=${String(form.vehicleId) === String(v.id)}
                     key=${v.id}
                     className=${`vehicle-chip ${String(form.vehicleId) === String(v.id) ? "active" : ""}`}
                     onClick=${() => setForm({ ...form, vehicleId: v.id })}
                   >
                     <span className="vehicle-emoji">${VEHICLE_EMOJI[v.vehicleType.name] || "🚗"}</span>
-                    <span>${v.model || v.vehicleType.name} · ${v.licensePlate || "no plate"}</span>
-                  </div>
+                    <span>
+                      <span className="vehicle-chip-name">${v.model || humanize(v.vehicleType.name)}</span>
+                      <span className="vehicle-chip-plate">${v.licensePlate || humanize(v.vehicleType.name)}</span>
+                    </span>
+                  </button>
                 `
               )}
-              <div className="vehicle-chip vehicle-chip-add" onClick=${() => navigate("/customer/vehicles")}>
-                <span className="vehicle-emoji">➕</span>
-                <span>Add vehicle</span>
-              </div>
+              <button type="button" className="vehicle-chip vehicle-chip-add" onClick=${() => navigate("/customer/vehicles")}>
+                <${Icon} name="plus" size=${16} /> Add
+              </button>
             </div>
           </div>
+        </div>
+
+        <div className="card">
           <div className="field">
-            <label>📍 Your location</label>
-            <div className="tabs" style=${{ marginBottom: 10 }}>
-              <div className=${`tab ${locationMode === "gps" ? "active" : ""}`} onClick=${() => setLocationMode("gps")}>
-                📍 My location
-              </div>
-              <div className=${`tab ${locationMode === "address" ? "active" : ""}`} onClick=${() => setLocationMode("address")}>
-                🏠 Enter address
-              </div>
+            <span className="label">Where are you?</span>
+            <div className="segmented" role="tablist">
+              <button type="button" role="tab" aria-selected=${locationMode === "gps"} className=${locationMode === "gps" ? "active" : ""} onClick=${() => setLocationMode("gps")}>
+                <${Icon} name="crosshair" size=${15} /> Current location
+              </button>
+              <button type="button" role="tab" aria-selected=${locationMode === "address"} className=${locationMode === "address" ? "active" : ""} onClick=${() => setLocationMode("address")}>
+                <${Icon} name="pin" size=${15} /> Search address
+              </button>
             </div>
+
             ${locationMode === "gps"
               ? html`
-                  <div className="pill-input">
-                    <input placeholder="Latitude" required value=${form.lat} onChange=${(e) => setForm({ ...form, lat: e.target.value })} />
-                    <input placeholder="Longitude" required value=${form.lng} onChange=${(e) => setForm({ ...form, lng: e.target.value })} />
-                  </div>
-                  <div style=${{ marginTop: 8 }}>
-                    <${Button} type="button" variant="outline" size="sm" loading=${locating} onClick=${locate}>
-                      📍 Use current location
+                  <div className="location-box">
+                    <span className="loc-icon"><${Icon} name="pin" size=${18} /></span>
+                    <div className="loc-text">
+                      <div className="loc-title">${hasLocation ? "Location set" : "No location yet"}</div>
+                      <div className="loc-sub">${hasLocation ? `${Number(form.lat).toFixed(4)}, ${Number(form.lng).toFixed(4)}` : "Allow location access to find garages near you"}</div>
+                    </div>
+                    <${Button} type="button" variant=${hasLocation ? "outline" : "primary"} size="sm" icon="crosshair" loading=${locating} onClick=${locate}>
+                      ${hasLocation ? "Update" : "Locate me"}
                     <//>
                   </div>
+                  <details className="manual">
+                    <summary>Enter coordinates manually</summary>
+                    <div className="pill-input">
+                      <input className="input" aria-label="Latitude" placeholder="Latitude" inputMode="decimal" value=${form.lat} onChange=${(e) => setForm({ ...form, lat: e.target.value })} />
+                      <input className="input" aria-label="Longitude" placeholder="Longitude" inputMode="decimal" value=${form.lng} onChange=${(e) => setForm({ ...form, lng: e.target.value })} />
+                    </div>
+                  </details>
                 `
               : html`
-                  <div className="pill-input">
+                  <div className="input-row">
                     <input
-                      placeholder="e.g. 12 MG Road, New Delhi"
+                      className="input"
+                      aria-label="Address"
+                      placeholder="e.g. 12 MG Road, Bengaluru"
                       value=${addressQuery}
                       onChange=${(e) => setAddressQuery(e.target.value)}
+                      onKeyDown=${(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          findByAddress();
+                        }
+                      }}
                     />
-                    <${Button} type="button" variant="outline" size="sm" loading=${geocoding} onClick=${findByAddress}>
-                      Find
-                    <//>
+                    <${Button} type="button" variant="outline" size="sm" icon="search" loading=${geocoding} onClick=${findByAddress}>Find<//>
                   </div>
-                  ${geocodeError && html`<p className="muted" style=${{ color: "var(--red)", marginTop: 6 }}>${geocodeError}</p>`}
-                  ${resolvedAddress &&
-                  html`<p className="muted" style=${{ marginTop: 6 }}>📍 ${resolvedAddress}</p>`}
+                  ${geocodeError && html`<p className="hint" style=${{ color: "var(--red)" }}>${geocodeError}</p>`}
+                  ${resolvedAddress && html`<p className="hint"><${Icon} name="pin" size=${12} className="inline-icon" /> ${resolvedAddress}</p>`}
                 `}
-            ${form.lat &&
-            form.lng &&
-            html`
-              <div className="stat-badge">
-                🏠 ${nearbyCountLoading ? "Checking nearby garages…" : `${nearbyCount ?? 0} garage${nearbyCount === 1 ? "" : "s"} within ${form.radiusKm} km`}
-              </div>
-            `}
+            ${hasLocation && html`<${NearbyBadge} loading=${nearbyCountLoading} count=${nearbyCount} radiusKm=${form.radiusKm} fault=${selectedFault} vehicle=${vehicles.find((v) => String(v.id) === String(form.vehicleId))} />`}
           </div>
+
           <div className="field">
-            <label>Search radius: ${form.radiusKm} km</label>
+            <div className="card-row" style=${{ marginBottom: 10 }}>
+              <label htmlFor="radius" className="label" style=${{ margin: 0 }}>Search radius</label>
+              <span className="badge badge-neutral">${form.radiusKm} km</span>
+            </div>
             <input
+              id="radius"
               type="range"
               min="5"
               max="100"
               step="5"
               value=${form.radiusKm}
-              onChange=${(e) => setForm({ ...form, radiusKm: e.target.value })}
+              style=${{ backgroundSize: `${radiusPct}% 100%` }}
+              onChange=${(e) => setForm({ ...form, radiusKm: Number(e.target.value) })}
             />
+            <div className="range-labels"><span>5 km</span><span>100 km</span></div>
           </div>
         </div>
-        <${Button} type="submit">🔍 Find nearby garages<//>
+
+        <div className="sticky-cta">
+          <${Button} type="submit" size="lg" icon="search" disabled=${!hasLocation || !form.faultTypeId}>
+            ${hasLocation ? "Find nearby garages" : "Set your location to continue"}
+          <//>
+        </div>
       </form>
     <//>
+  `;
+}
+
+/** "N garages can fix this within X km", with an explanation when garages exist but none price this job. */
+function NearbyBadge({ loading, count, radiusKm, fault, vehicle }) {
+  if (loading || !count) {
+    return html`<div className="stat-badge"><${Icon} name="garage" size=${14} />${loading ? "Checking nearby garages…" : "Couldn't check nearby garages"}</div>`;
+  }
+  const plural = (n) => `${n} garage${n === 1 ? "" : "s"}`;
+  if (count.bookable > 0) {
+    return html`<div className="stat-badge"><${Icon} name="garage" size=${14} />${plural(count.bookable)} can fix this within ${radiusKm} km</div>`;
+  }
+  const job = `${fault ? humanize(fault.name).toLowerCase() : "this fault"} on a ${vehicle ? humanize(vehicle.vehicleType.name) : "vehicle"}`;
+  return html`
+    <div className="alert alert-warning" style=${{ marginTop: 10, marginBottom: 0 }}>
+      <span className="alert-text">
+        ${count.total > 0
+          ? `${plural(count.total)} within ${radiusKm} km, but none ${count.total === 1 ? "has" : "have"} set a price for ${job} yet. Try another fault, or a wider radius.`
+          : `No garages within ${radiusKm} km. Try a wider radius.`}
+      </span>
+    </div>
   `;
 }
