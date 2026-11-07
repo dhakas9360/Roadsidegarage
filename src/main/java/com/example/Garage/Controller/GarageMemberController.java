@@ -12,6 +12,7 @@ import com.example.Garage.Repository.GarageRepo;
 import com.example.Garage.Repository.UserRepository;
 import com.example.Garage.exception.ForbiddenActionException;
 import com.example.Garage.exception.ResourceNotFoundException;
+import com.example.Garage.service.BookingService;
 import com.example.Garage.service.CurrentUserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,7 @@ public class GarageMemberController {
     private final GarageRepo garageRepo;
     private final UserRepository userRepository;
     private final CurrentUserService currentUserService;
+    private final BookingService bookingService;
 
     @PostMapping
     @PreAuthorize("hasAuthority('ROLE_GARAGE_OWNER')")
@@ -58,7 +60,9 @@ public class GarageMemberController {
         member.setLatitude(request.getLatitude());
         member.setLongitude(request.getLongitude());
 
-        return ResponseEntity.ok(garageMemberRepo.save(member));
+        GarageMember saved = garageMemberRepo.save(member);
+        bookingService.dispatchWaitingBookings(garage.getId());
+        return ResponseEntity.ok(reload(saved));
     }
 
     @PostMapping("/join")
@@ -78,7 +82,15 @@ public class GarageMemberController {
         member.setLatitude(request.getLatitude());
         member.setLongitude(request.getLongitude());
 
-        return ResponseEntity.ok(garageMemberRepo.save(member));
+        GarageMember saved = garageMemberRepo.save(member);
+        // a new technician can immediately take bookings that were waiting at this garage
+        bookingService.dispatchWaitingBookings(garage.getId());
+        return ResponseEntity.ok(reload(saved));
+    }
+
+    /** Re-reads a member so the response reflects activeJobs changed by auto-dispatch. */
+    private GarageMember reload(GarageMember member) {
+        return garageMemberRepo.findById(member.getId()).orElse(member);
     }
 
     @GetMapping("/available-technicians")
@@ -126,6 +138,12 @@ public class GarageMemberController {
         GarageMember member = garageMemberRepo.findByUserId(currentUserService.getCurrentUserId())
                 .orElseThrow(() -> new ResourceNotFoundException("No technician profile found for this account"));
         member.setAvailable(available);
-        return ResponseEntity.ok(garageMemberRepo.save(member));
+        GarageMember saved = garageMemberRepo.save(member);
+        if (available) {
+            // coming back online -> pick up bookings that queued while nobody was available
+            bookingService.dispatchWaitingBookings(saved.getGarage().getId());
+            saved = reload(saved);
+        }
+        return ResponseEntity.ok(saved);
     }
 }

@@ -1,5 +1,6 @@
 package com.example.Garage.security;
 
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -29,7 +30,15 @@ public class SecurityConfig {
                         "/index.html", "/favicon.ico", "/css/**", "/js/**", "/assets/**").permitAll()
                 .anyRequest().authenticated()
                 .and()
-                .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS);
+                .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                .and()
+                // Missing/expired/invalid JWT -> 401 (not Spring's default 403), so the SPA's
+                // api.js can recognise an expired session and send the user back to login.
+                .exceptionHandling().authenticationEntryPoint((request, response, ex) -> {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json");
+                    response.getWriter().write("{\"error\":\"Authentication required\"}");
+                });
 
         http.addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 

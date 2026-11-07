@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import html from "../../lib/html.js";
-import Layout from "../../components/Layout.js";
+import Layout, { Alert } from "../../components/Layout.js";
 import Button from "../../components/Button.js";
-import Spinner, { EmptyState } from "../../components/Spinner.js";
+import { SkeletonList, EmptyState } from "../../components/Spinner.js";
 import { api } from "../../api.js";
+import { VEHICLE_EMOJI, humanize } from "../../lib/format.js";
+
+const EMPTY_FORM = { model: "", year: "", licensePlate: "" };
 
 export default function Vehicles() {
   const [vehicles, setVehicles] = useState([]);
@@ -11,8 +14,9 @@ export default function Vehicles() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState(null);
+  const [saved, setSaved] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ vehicleTypeId: "", model: "", year: "", licensePlate: "" });
+  const [form, setForm] = useState({ vehicleTypeId: "", ...EMPTY_FORM });
 
   const load = () =>
     Promise.all([api.get("/api/vehicles/my"), api.get("/api/vehicle-types")])
@@ -20,6 +24,7 @@ export default function Vehicles() {
         setVehicles(v);
         setVehicleTypes(t);
         setForm((f) => ({ ...f, vehicleTypeId: f.vehicleTypeId || t[0]?.id || "" }));
+        if (v.length === 0) setShowForm(true);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -33,9 +38,15 @@ export default function Vehicles() {
     setSaving(true);
     setError(null);
     try {
-      await api.post("/api/vehicles", { ...form, year: form.year ? Number(form.year) : null });
-      setForm({ vehicleTypeId: vehicleTypes[0]?.id || "", model: "", year: "", licensePlate: "" });
+      const v = await api.post("/api/vehicles", {
+        vehicleTypeId: Number(form.vehicleTypeId),
+        model: form.model.trim() || null,
+        year: form.year ? Number(form.year) : null,
+        licensePlate: form.licensePlate.trim().toUpperCase() || null,
+      });
+      setForm((f) => ({ ...f, ...EMPTY_FORM }));
       setShowForm(false);
+      setSaved(`${v.model || humanize(v.vehicleType.name)} added.`);
       await load();
     } catch (err) {
       setError(err.message);
@@ -44,53 +55,79 @@ export default function Vehicles() {
     }
   };
 
-  if (loading) return html`<${Layout} title="My vehicles"><${Spinner} dark /><//>`;
+  const thisYear = new Date().getFullYear();
 
   return html`
-    <${Layout} title="My vehicles">
-      ${error && html`<div className="error-banner">${error}</div>`}
-      ${vehicles.length === 0 && !showForm && html`<${EmptyState} emoji="🚗" title="No vehicles yet" subtitle="Add one to start booking." />`}
+    <${Layout}
+      title="My vehicles"
+      subtitle=${vehicles.length ? `${vehicles.length} vehicle${vehicles.length === 1 ? "" : "s"}` : undefined}
+      actions=${!showForm && vehicles.length > 0 && html`<${Button} size="sm" variant="secondary" icon="plus" onClick=${() => setShowForm(true)}>Add<//>`}
+    >
+      <${Alert} onClose=${() => setError(null)}>${error}<//>
+      <${Alert} tone="success" onClose=${() => setSaved(null)}>${saved}<//>
+      ${loading && html`<${SkeletonList} count=${2} />`}
+
+      ${showForm &&
+      html`
+        <form className="card fade-in" onSubmit=${submit}>
+          <div className="card-title" style=${{ marginBottom: 14 }}>Add a vehicle</div>
+          <div className="field">
+            <span className="label">Type</span>
+            <div className="fault-grid" role="radiogroup">
+              ${vehicleTypes.map(
+                (t) => html`
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked=${String(form.vehicleTypeId) === String(t.id)}
+                    key=${t.id}
+                    className=${`tile ${String(form.vehicleTypeId) === String(t.id) ? "active" : ""}`}
+                    onClick=${() => setForm({ ...form, vehicleTypeId: t.id })}
+                  >
+                    <span className="tile-emoji">${VEHICLE_EMOJI[t.name] || "🚗"}</span>
+                    ${humanize(t.name)}
+                  </button>
+                `
+              )}
+            </div>
+          </div>
+          <div className="field">
+            <label htmlFor="v-model">Model</label>
+            <input id="v-model" value=${form.model} onChange=${(e) => setForm({ ...form, model: e.target.value })} placeholder="e.g. Honda City" />
+          </div>
+          <div className="form-grid-2" style=${{ marginBottom: 16 }}>
+            <div className="field">
+              <label htmlFor="v-year">Year</label>
+              <input id="v-year" type="number" min="1950" max=${thisYear + 1} value=${form.year} onChange=${(e) => setForm({ ...form, year: e.target.value })} placeholder=${String(thisYear - 3)} />
+            </div>
+            <div className="field">
+              <label htmlFor="v-plate">Number plate</label>
+              <input id="v-plate" style=${{ textTransform: "uppercase" }} value=${form.licensePlate} onChange=${(e) => setForm({ ...form, licensePlate: e.target.value })} placeholder="KA01AB1234" />
+            </div>
+          </div>
+          <div className="btn-row">
+            ${vehicles.length > 0 && html`<${Button} variant="outline" type="button" onClick=${() => setShowForm(false)}>Cancel<//>`}
+            <${Button} type="submit" loading=${saving}>Save vehicle<//>
+          </div>
+        </form>
+      `}
+
+      ${!loading && vehicles.length === 0 && !showForm && html`<${EmptyState} icon="car" title="No vehicles yet" subtitle="Add one to start booking." />`}
+
       ${vehicles.map(
         (v) => html`
-          <div key=${v.id} className="card card-row">
-            <div>
-              <p className="card-title">${v.model || v.vehicleType.name}</p>
-              <p className="card-sub">${v.vehicleType.name} · ${v.year || "?"} · ${v.licensePlate || "no plate"}</p>
+          <div key=${v.id} className="card">
+            <div className="person">
+              <div className="person-avatar" style=${{ fontSize: 22, borderRadius: 12 }}>${VEHICLE_EMOJI[v.vehicleType.name] || "🚗"}</div>
+              <div style=${{ minWidth: 0 }}>
+                <p className="card-title">${v.model || humanize(v.vehicleType.name)}</p>
+                <p className="card-sub">${humanize(v.vehicleType.name)}${v.year ? ` · ${v.year}` : ""}</p>
+              </div>
+              ${v.licensePlate && html`<span className="badge badge-neutral" style=${{ marginLeft: "auto", letterSpacing: ".05em" }}>${v.licensePlate}</span>`}
             </div>
           </div>
         `
       )}
-      ${showForm
-        ? html`
-            <div className="card">
-              <div className="section-title">Add vehicle</div>
-              <form onSubmit=${submit}>
-                <div className="field">
-                  <label>Vehicle type</label>
-                  <select value=${form.vehicleTypeId} onChange=${(e) => setForm({ ...form, vehicleTypeId: e.target.value })}>
-                    ${vehicleTypes.map((t) => html`<option key=${t.id} value=${t.id}>${t.name}<//>`)}
-                  </select>
-                </div>
-                <div className="field">
-                  <label>Model</label>
-                  <input value=${form.model} onChange=${(e) => setForm({ ...form, model: e.target.value })} placeholder="e.g. Honda City" />
-                </div>
-                <div className="field">
-                  <label>Year</label>
-                  <input type="number" value=${form.year} onChange=${(e) => setForm({ ...form, year: e.target.value })} placeholder="2021" />
-                </div>
-                <div className="field">
-                  <label>License plate</label>
-                  <input value=${form.licensePlate} onChange=${(e) => setForm({ ...form, licensePlate: e.target.value })} />
-                </div>
-                <div className="btn-block-row">
-                  <${Button} variant="outline" type="button" onClick=${() => setShowForm(false)}>Cancel<//>
-                  <${Button} type="submit" loading=${saving}>Save<//>
-                </div>
-              </form>
-            </div>
-          `
-        : html`<${Button} onClick=${() => setShowForm(true)}>+ Add a vehicle<//>`}
     <//>
   `;
 }

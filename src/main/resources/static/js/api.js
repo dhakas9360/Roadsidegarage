@@ -25,11 +25,16 @@ async function request(method, path, body) {
   const headers = { "Content-Type": "application/json" };
   if (session?.token) headers.Authorization = `Bearer ${session.token}`;
 
-  const res = await fetch(path, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  let res;
+  try {
+    res = await fetch(path, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new ApiError("Can't reach the server. Check your connection and try again.", 0);
+  }
 
   if (res.status === 401 && !path.startsWith("/auth/")) {
     setSession(null);
@@ -48,7 +53,14 @@ async function request(method, path, body) {
   }
 
   if (!res.ok) {
-    const message = data?.error || (typeof data === "string" ? data : null) || "Something went wrong";
+    // backend sends {error: "..."}, a plain string, or a {field: message} map for validation failures
+    const fieldErrors =
+      data && typeof data === "object" && !data.error ? Object.values(data).filter((v) => typeof v === "string") : [];
+    const message =
+      data?.error ||
+      (typeof data === "string" ? data : null) ||
+      (fieldErrors.length ? fieldErrors.join(" · ") : null) ||
+      (res.status >= 500 ? "Server error — please try again in a moment." : "Something went wrong");
     throw new ApiError(message, res.status);
   }
   return data;

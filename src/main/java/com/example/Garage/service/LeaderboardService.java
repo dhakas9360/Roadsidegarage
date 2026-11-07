@@ -21,6 +21,7 @@ import java.util.stream.Collectors;
 public class LeaderboardService {
 
     private final BookingRepo bookingRepo;
+    private final com.example.Garage.Repository.UserRepository userRepository;
 
     /** Per-garage "employee of the month" leaderboard, ranked by average customer rating. */
     public List<LeaderboardEntryResponse> monthlyLeaderboard(Long garageId, YearMonth month) {
@@ -38,7 +39,8 @@ public class LeaderboardService {
                     GarageMember technician = entry.getKey();
                     List<Booking> jobs = entry.getValue();
                     double average = jobs.stream().mapToInt(Booking::getRating).average().orElse(0.0);
-                    return new LeaderboardEntryResponse(0, technician.getId(), technician.getUserId(), average, jobs.size());
+                    String name = userRepository.findById(technician.getUserId()).map(u -> u.getUsername()).orElse(null);
+                    return new LeaderboardEntryResponse(0, technician.getId(), technician.getUserId(), average, jobs.size(), name);
                 })
                 .sorted(Comparator.comparingDouble(LeaderboardEntryResponse::getAverageRating).reversed())
                 .collect(Collectors.toList());

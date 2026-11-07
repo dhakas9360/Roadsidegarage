@@ -103,7 +103,9 @@ The static frontend (`src/main/resources/static/js/`) is a small SPA with no bun
 - `auth.js` — session state (React context), role resolution, JWT storage in `localStorage`.
 - `api.js` — thin `fetch` wrapper: attaches the bearer token, normalizes errors, handles 401s (except on `/auth/*`, so login failures show the real error instead of a false "session expired").
 - `pages/` — one file per screen, organized by role folder (`customer/`, `owner/`, `technician/`).
-- `components/` — shared UI (`Layout`, `TopBar`, `BottomNav`, `Button`, `StatusBadge`, etc.).
+- `components/` — shared UI (`Layout`/`Alert`, `TopBar`, `BottomNav`, `Button`/`ConfirmButton`, `Icon` (inline SVG set), `StatusBadge`/`StatusTracker`, `RatingStars`, skeleton loaders).
+- `lib/format.js` — shared display helpers (labels, ₹ formatting, friendly dates, maps links, visibility-aware polling).
+- `css/styles.css` — token-based design system (Inter font; every colour is a CSS variable with a light and dark value).
 
 ---
 
@@ -125,7 +127,9 @@ The static frontend (`src/main/resources/static/js/`) is a small SPA with no bun
 - "Book again" one-tap rebook from the last completed job
 - SOS shortcut — instant widest-radius search using current GPS location
 - Nearby garage search sorted by distance, with fault×vehicle-specific pricing and ratings
-- Place a booking — the backend **auto-assigns the best available technician** by rating (falls back to "unassigned" if none free)
+- Place a booking — the backend **auto-assigns the best available technician** by rating, skipping technicians already at the concurrent-job cap (`MAX_ACTIVE_JOBS_PER_TECHNICIAN`, default 3); falls back to "unassigned" if none free
+- **Auto-dispatch queue** — unassigned bookings are handed out automatically (oldest first) the moment a technician joins, comes back online, completes a job, or has a job cancelled; the owner no longer has to press "retry"
+- Same-day booking allowed; past dates and a second active booking for the same vehicle are rejected
 - Booking history with live status, cancel option, technician contact info
 - Rate a completed job (stars + comment)
 - Vehicle management (add/list vehicles)
@@ -438,6 +442,7 @@ None are required for local dev — all fall back to safe defaults for H2. For p
 | `SPRING_DATASOURCE_PASSWORD` | DB password | *(empty)* |
 | `SPRING_DATASOURCE_DRIVER` | JDBC driver class, e.g. `org.postgresql.Driver` | `org.h2.Driver` |
 | `H2_CONSOLE_ENABLED` | Set `false` in production | `true` |
+| `MAX_ACTIVE_JOBS_PER_TECHNICIAN` | Concurrent jobs a technician can hold before new bookings queue | `3` |
 | `OPENAI_API_KEY` | Enables the AI fault-classification feature (optional) | *(unset — feature disabled)* |
 
 ---
@@ -457,4 +462,5 @@ The included `Dockerfile` is a multi-stage build (Maven build stage → slim JRE
 - **Fully synchronous backend** — no `@Async`, scheduled jobs, or message queues. Booking placement, technician assignment, and notification writes all happen inline in one request. The OpenAI call is a blocking HTTP request, so a slow AI response holds a server thread.
 - **No real-time push** — notifications and job status updates rely on 15s polling, not WebSockets/SSE.
 - **No migration tool** — schema changes rely on Hibernate's `ddl-auto=update`, which is fine for a demo but not how you'd manage a production schema long-term.
-- **No automated tests** currently included beyond the Spring Boot test scaffolding.
+- Automated tests: `src/test/java/com/example/Garage/EndToEndFlowTest.java` drives the full HTTP API (security, validation, services, H2) across customer, owner and technician flows. Run with `./mvnw test`.
+- Demo data for a running local instance: `bash scripts/seed-dev-data.sh` (local dev accounts `owner1` / `tech1` / `cust1`).

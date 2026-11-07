@@ -17,12 +17,14 @@ import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
+@org.springframework.transaction.annotation.Transactional
 public class JobService {
 
     private final BookingRepo bookingRepo;
     private final GarageMemberRepo garageMemberRepo;
     private final GarageRepo garageRepo;
     private final NotificationService notificationService;
+    private final BookingService bookingService;
 
     public GarageMember getTechnicianForUser(Long userId) {
         return garageMemberRepo.findByUserId(userId)
@@ -49,7 +51,7 @@ public class JobService {
         booking.setStatus(BookingStatus.IN_PROGRESS);
         Booking saved = bookingRepo.save(booking);
         notificationService.notify(saved.getUserId(),
-                "Your technician has started working on your " + saved.getFaultType().getName().replace("_", " ") + ".",
+                "Your technician has started working on your " + saved.getFaultType().getName().replace("_", " ").toLowerCase() + ".",
                 saved.getId());
         return saved;
     }
@@ -70,8 +72,10 @@ public class JobService {
 
         Booking saved = bookingRepo.save(booking);
         notificationService.notify(saved.getUserId(),
-                "Your " + saved.getFaultType().getName().replace("_", " ") + " job is complete! Please rate your technician.",
+                "Your " + saved.getFaultType().getName().replace("_", " ").toLowerCase() + " job is complete! Please rate your technician.",
                 saved.getId());
+        // technician has spare capacity again -> pick up any booking that was waiting for one
+        bookingService.dispatchWaitingBookings(saved.getGarage().getId());
         return saved;
     }
 
